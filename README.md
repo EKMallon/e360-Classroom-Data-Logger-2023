@@ -1,5 +1,5 @@
 # The e360 Student Built Data Logger 2023
-<img src="https://github.com/EKMallon/The_Cave_Pearl_Project_CURRENT_codebuilds/blob/master/images/CavePearlProjectBanner_130x850px.jpg">
+<img src="https://github.com/EKMallon/The-e360-Student-Built-Data-Logger/images/GitHubHeader_830x130_20231128.jpg">
 
 A classroom logger developed for the e360 Instrumentation &amp; Field Methods course at Northwestern University.
 
