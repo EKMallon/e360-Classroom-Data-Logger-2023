@@ -1,5 +1,5 @@
 # The e360 Student Built Data Logger 2023
-<img src="https://github.com/EKMallon/The-e360-Student-Built-Data-Logger/images/GitHubHeader_830x130_20231128.jpg">
+<img src="https://github.com/EKMallon/The-e360-Student-Built-Data-Logger/blob/master/images/GitHubHeader_830x130_20231128.jpg">
 
 A classroom logger developed for the e360 Instrumentation &amp; Field Methods course at Northwestern University.
 
