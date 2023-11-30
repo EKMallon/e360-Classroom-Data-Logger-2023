@@ -8,6 +8,8 @@ This program supports an ongoing series of DIY 'Classroom Logger' tutorials from
 <br/>with a detailed building guide video at:<br/>
 video link goes here
 
+![image](https://github.com/EKMallon/The-e360-Student-Built-Data-Logger/assets/7884030/1073ed17-0470-4bda-b54a-d84adefa1c2b)
+
 
 This 'low power' 2-module iteration runs the logger from a CR2032 coin cell and uses  EEprom memory to store sensor readings. This necessarily involves several power optimization steps which add significant complexity to the base code (as compared to previous versions) but hopefully everyone can read through the code and understand what is happening from the extensive comments. There are several manual configuration settings controlled by #define statements at the start of the program, and the logger will not be able to read the coincell voltage properly until you tweak the InternalReferenceConstant. <br/> <br/>
 Data download & logger control are managed  through the IDE's serial monitor window at 500000 baud. 
