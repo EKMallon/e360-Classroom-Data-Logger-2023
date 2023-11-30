@@ -14,7 +14,7 @@ video link goes here
 This 'low power' 2-module iteration runs the logger from a CR2032 coin cell and uses  EEprom memory to store sensor readings. This necessarily involves several power optimization steps which add significant complexity to the base code (as compared to previous versions) but hopefully everyone can read through the code and understand what is happening from the extensive comments. There are several manual configuration settings controlled by #define statements at the start of the program, and the logger will not be able to read the coincell voltage properly until you tweak the InternalReferenceConstant. <br/> <br/>
 Data download & logger control are managed  through the IDE's serial monitor window at 500000 baud. 
 The logger WILL NOT START taking readings until those serial handshakes are completed via the UART connection.<br/><br/>
-Note that all the readings are initially buffered in opdDataBuffer[16] & sensorDataBuffer[16] arrays so there won't be any data in the EEprom until those ram buffers get transfered.  With the 1-byte RTCtemp only default configuration you will have to wait 16* sampleInterval minutes before that happens. The default 4k eeprom on the rtc module stores 4096 of those readings so takes ~2.8 days at 1min interval before it is full. (at which point the logger shuts down)<br/><br/>
+
 The most important rule to follow when adding new sensors is that the buffer arrays can only handle 'powers of 2' additions of 1, 2, 4, or 8 bytes.
 Odd byte quantities per sensor record (other than one) and you end up with page boundary issues in the EEprom.
 
