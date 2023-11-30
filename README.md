@@ -3,14 +3,14 @@
 This program supports an ongoing series of DIY 'Classroom Logger' tutorials from Edward Mallon & Dr. Patricia Beddows at the Cave Pearl Project. The idea is to provide a starting point for student projects in environmental monitoring courses and/or thesis level research.The tutorial that matches this code can be found at: post link goes here    with a detailed building guide video at:   video link goes here
 
 The code has support for a built-in NTC / LDR combination, Bmp280, BH1750, and PIR sensors. These are enabled / disabled by uncommenting define statements at the beginning of the code. Each sensor enabled after the single-byte LowBat & RTCtemp defaults contributes two additional bytes per sampling event because every sensor reading gets stored in a 16-bit integer. The total bytes per saved per record must total 1, 2, 4, 8 or 16 only. Modifying the logger base code for a new type of sensor requires edits only at the areas indicated by call out numbers on the following flow charts. These are labeled with comments: STEP1, STEP2, STEP3, etc. so you can locate those sections with the Find function in the IDE.  They are surrounded by rows of ++PLUS++ symbols:</br>
-//++++++++++++++++++++++++++++++++++++++++++</br>
-// STEP1 : #include libraries & Declare Variables HERE</br>
-//++++++++++++++++++++++++++++++++++++++++++</br>
-
+>//++++++++++++++++++++++++++++++++++++++++++++++++++++</br>
+>// STEP1 : #include libraries & Declare Variables HERE</br>
+>//++++++++++++++++++++++++++++++++++++++++++++++++++++</br>
 ![image](https://github.com/EKMallon/e360-Student-Data-Logger-2023/assets/7884030/9b3076fb-8c6d-409d-8c09-f8259e70e258)
+If all you do is enable the supported sensors via defines at the start of the program you won't have to deal with the low-level storage details.
+![image](https://github.com/EKMallon/e360-Student-Data-Logger-2023/assets/7884030/29d781fe-6e29-4e28-8342-0259748029fe)
 
-
-If all you do is enable the supported sensors via defines at the start of the program you won't have to deal with the low-level storage details . However to add new sensors you'll need to understand the I2C transaction that transfers those sensor readings into the EEprom at the end of the main loop. This involves dividing your sensor variables into 8-bit pieces and adding those bytes to the wire transfer buffer. This is accomplished with bit-math operations or via the lowByte & highByte macros.  The general pattern when sending bytes to an I2C EEprom is:</br>
+ However to add new sensors you'll need to understand the I2C transaction that transfers those sensor readings into the EEprom at the end of the main loop. This involves dividing your sensor variables into 8-bit pieces and adding those bytes to the wire transfer buffer. This is accomplished with bit-math operations or via the lowByte & highByte macros.  The general pattern when sending bytes to an I2C EEprom is:</br>
 
 Wire.beginTransmission(EEpromAddressonI2Cbus);   // first byte in I2C buffer
 Wire.write(highByte(memoryAddress));             // it takes two bytes to specify the
