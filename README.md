@@ -1,5 +1,5 @@
 ![banner image](https://github.com/EKMallon/The-e360-Student-Built-Data-Logger/assets/7884030/48f75f8c-3236-4a68-9ae2-6572afddc3ce)
-# The e360 Student Data Logger 2023
+# The e360 Student Data Logger 2023 page is still under construction
 
 This program supports an ongoing series of DIY 'Classroom Logger' tutorials from Edward Mallon & Dr. Patricia Beddows at the Cave Pearl Project. The idea is to provide a starting point for student projects in environmental monitoring courses and/or thesis level research.<br/>
 ![image](https://github.com/EKMallon/The-e360-Student-Built-Data-Logger/assets/7884030/1073ed17-0470-4bda-b54a-d84adefa1c2b)
