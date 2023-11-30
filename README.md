@@ -24,11 +24,4 @@ Note: This script will still run on the 3-module "Modules & Jumper Wires"  logge
 and provides a 'no SD card' method of extending lifespan on the 2020 classroom logger described at https://thecavepearlproject.org/2020/10/22/pro-mini-classroom-datalogger-2020-update/  where multiple I2C eeproms can be added easily via the breadboard(s)
 
 ---
-Addendum 2023-10-25: Code revisions are *currently underway* to support the use of these loggers in enviro-sci course curriculum & some elements of the old code may disappear for a while until our students have progressed further through the lab sequence. Those elements will then be restored to the base code. This may cause discrepancies between the text in the 2-part logger blog post and the options in the code posted here.
 
-This program supports an ongoing series of DIY 'Classroom Logger' tutorials from Edward Mallon & Dr. Patricia Beddows at the Cave Pearl Project. The idea is to provide a starting point for student projects in environmental monitoring courses and/or thesis level research.<br/>
-<br/>The tutorial that matches this code can be found at:<br/>
- post link goes here
-<br/>with a detailed building guide video at:<br/>
-video link goes here
-<img   align="right" width="400" src="[https://github.com/EKMallon/2-Part-ProMini-EEprom-Data-Logger_2022/blob/main/images/2-PartEEpromLogger_CavePearlProject_2022.jpg]">
