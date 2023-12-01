@@ -1,7 +1,7 @@
 ![banner image](https://github.com/EKMallon/The-e360-Student-Built-Data-Logger/assets/7884030/48f75f8c-3236-4a68-9ae2-6572afddc3ce)
 This program supports an ongoing series of DIY 'Classroom Logger' tutorials from Edward Mallon & Dr. Patricia Beddows at the Cave Pearl Project. The idea is to provide a starting point for student projects in environmental monitoring courses and/or thesis level research.</br>
-The tutorial that matches this code can be found at:</br>
-post link goes here    with a [2-Module Data Logger Build Video (90min w Commentary)](https://youtu.be/_LEFM4l9m5c)
+The tutorial that matches this code can be found at: [The e360: A $10 Classroom Data Logger for Science]([https://youtu.be/_LEFM4l9m5c](https://thecavepearlproject.org/2023/12/01/the-e360-a-10-classroom-data-logger-for-science/))</br>
+with a [2-Module Data Logger Build Video (90min w Commentary)](https://youtu.be/_LEFM4l9m5c)
 
 <figure><img  align="right" width="400" height="240" src="images/20231128_e360_schematic_400x240.png"></figure>
 The code has support for a built-in NTC / LDR combination, Bmp280, BH1750, and PIR sensors. These are enabled / disabled by uncommenting define statements at the beginning of the code. Each sensor enabled after the single-byte LowBat & RTCtemp defaults contributes two additional bytes per sampling event because every sensor reading gets stored in a 16-bit integer. The total bytes per saved per record must total 1, 2, 4, 8 or 16 only. Modifying the logger base code for a new type of sensor requires edits only at the areas indicated by call out numbers on the following flow charts. These are labeled with comments: STEP1, STEP2, STEP3, etc. so you can locate those sections with the Find function in the IDE.  They are surrounded by rows of ++PLUS++ symbols:</br>
