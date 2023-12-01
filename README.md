@@ -1,7 +1,7 @@
 # THIS REPO is still UNDER CONSTRUCTION
 ![banner image](https://github.com/EKMallon/The-e360-Student-Built-Data-Logger/assets/7884030/48f75f8c-3236-4a68-9ae2-6572afddc3ce)
 This program supports an ongoing series of DIY 'Classroom Logger' tutorials from Edward Mallon & Dr. Patricia Beddows at the Cave Pearl Project. The idea is to provide a starting point for student projects in environmental monitoring courses and/or thesis level research.</br>
-The tutorial that matches this code can be found at: post link goes here    with a detailed building guide video at:   video link goes here
+The tutorial that matches this code can be found at: post link goes here    with a [2-Module Data Logger Build Tutorial (90min with Commentary)](https://youtu.be/_LEFM4l9m5c)
 
 <figure><img  align="right" width="400" height="240" src="images/20231128_e360_schematic_400x240.png"></figure>
 The code has support for a built-in NTC / LDR combination, Bmp280, BH1750, and PIR sensors. These are enabled / disabled by uncommenting define statements at the beginning of the code. Each sensor enabled after the single-byte LowBat & RTCtemp defaults contributes two additional bytes per sampling event because every sensor reading gets stored in a 16-bit integer. The total bytes per saved per record must total 1, 2, 4, 8 or 16 only. Modifying the logger base code for a new type of sensor requires edits only at the areas indicated by call out numbers on the following flow charts. These are labeled with comments: STEP1, STEP2, STEP3, etc. so you can locate those sections with the Find function in the IDE.  They are surrounded by rows of ++PLUS++ symbols:</br>
@@ -17,13 +17,13 @@ If all you do is enable the supported sensors via defines at the start of the pr
 
 >Wire.beginTransmission(EEpromAddressonI2Cbus);
 >Wire.write(highByte(memoryAddress)); Wire.write(lowByte(memoryAddress));
->loByte = lowByte(SensorReadingVariable); Wire.write(loByte); // adds 1st byte of sensor data to wire buffer
->hiByte = highByte(SensorReadingVariable); Wire.write(hiByte); // adds 2nd byte of sensor data to the buffer
+>loByte = lowByte(SensorReadingVariable); Wire.write(loByte);
+>hiByte = highByte(SensorReadingVariable); Wire.write(hiByte);
 
 **add more Wire.write statements here as needed**  
 You can ONLY add a total of 1, 2, 4, 8 or 16 DATA bytes to the I2C transaction. Powers of two increments are required because the recorded data must align with page boundaries inside the EEprom.
 
->Wire.endTransmission();                             // Only when this command executes does the data accumulated in the wire buffer actually get sent to the EEprom 
+>Wire.endTransmission();
 
 The key insight here is that the wire library is only loading a memory buffer until Wire.endTransmission() is called. So it does not matter how much time you spend doing calculations, or slicing the variables, so long as you don't try and start another I2C transaction while you are still in the middle of this one. Once that buffer is physically sent over the wires, the EEprom enters a self-timed writing sequence and the logger reads the rail voltage while the CR2032 is under load. </br>
 
