@@ -1,6 +1,6 @@
 # THIS REPO is still UNDER CONSTRUCTION
 ![banner image](https://github.com/EKMallon/The-e360-Student-Built-Data-Logger/assets/7884030/48f75f8c-3236-4a68-9ae2-6572afddc3ce)
-This program supports our ongoing series of DIY 'Classroom Logger' tutorials from Edward Mallon & Dr. Patricia Beddows at the Cave Pearl Project. The idea is to provide a starting point for student projects in environmental monitoring courses and/or thesis level research.</br>
+This program supports an ongoing series of DIY 'Classroom Logger' tutorials from Edward Mallon & Dr. Patricia Beddows at the Cave Pearl Project. The idea is to provide a starting point for student projects in environmental monitoring courses and/or thesis level research.</br>
 The tutorial that matches this code can be found at: post link goes here    with a detailed building guide video at:   video link goes here
 
 <figure><img  align="right" width="400" height="240" src="images/20231128_e360_schematic_400x240.png"></figure>
