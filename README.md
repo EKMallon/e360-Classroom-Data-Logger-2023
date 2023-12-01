@@ -15,17 +15,17 @@ If all you do is enable the supported sensors via defines at the start of the pr
 
  However to add new sensors you'll need to understand the I2C transaction that transfers those sensor readings into the EEprom at the end of the main loop. This involves dividing your sensor variables into 8-bit pieces and adding those bytes to the wire transfer buffer. This is accomplished with bit-math operations or via the lowByte & highByte macros.  The general pattern when sending bytes to an I2C EEprom is:</br>
 
-```Wire.beginTransmission(EEpromAddressonI2Cbus);</br>
-Wire.write(highByte(memoryAddress));</br>
-Wire.write(lowByte(memoryAddress));</br>
-loByte = lowByte(SensorReadingVariable); Wire.write(loByte);</br>
-hiByte = highByte(SensorReadingVariable); Wire.write(hiByte);</br>
+```Wire.beginTransmission(EEpromAddressonI2Cbus);
+Wire.write(highByte(memoryAddress));
+Wire.write(lowByte(memoryAddress));
+loByte = lowByte(SensorReadingVariable); Wire.write(loByte);
+hiByte = highByte(SensorReadingVariable); Wire.write(hiByte);
 ```
 
 **add more Wire.write statements here as needed**  
 You can ONLY add a total of 1, 2, 4, 8 or 16 DATA bytes to the I2C transaction. Powers of two increments are required because the recorded data must align with page boundaries inside the EEprom.
 
->Wire.endTransmission();
+```Wire.endTransmission();```
 
 The key insight here is that the wire library is only loading a memory buffer until Wire.endTransmission() is called. So it does not matter how much time you spend doing calculations, or slicing the variables, so long as you don't try and start another I2C transaction while you are still in the middle of this one. Once that buffer is physically sent over the wires, the EEprom enters a self-timed writing sequence and the logger reads the rail voltage while the CR2032 is under load. </br>
 
