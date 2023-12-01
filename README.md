@@ -16,7 +16,8 @@ If all you do is enable the supported sensors via defines at the start of the pr
  However to add new sensors you'll need to understand the I2C transaction that transfers those sensor readings into the EEprom at the end of the main loop. This involves dividing your sensor variables into 8-bit pieces and adding those bytes to the wire transfer buffer. This is accomplished with bit-math operations or via the lowByte & highByte macros.  The general pattern when sending bytes to an I2C EEprom is:</br>
 
 >Wire.beginTransmission(EEpromAddressonI2Cbus);</br>
->Wire.write(highByte(memoryAddress)); Wire.write(lowByte(memoryAddress));</br>
+>Wire.write(highByte(memoryAddress));</br>
+>Wire.write(lowByte(memoryAddress));</br>
 >loByte = lowByte(SensorReadingVariable); Wire.write(loByte);</br>
 >hiByte = highByte(SensorReadingVariable); Wire.write(hiByte);</br>
 
