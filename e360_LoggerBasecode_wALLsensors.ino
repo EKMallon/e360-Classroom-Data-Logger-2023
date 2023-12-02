@@ -70,8 +70,8 @@ const char deploymentDetails[] PROGMEM =   "Lab09: PIR sensor";
 int32_t InternalReferenceConstant = 1126400;  // default = 1126400L = 1100mV internal vref * 1024 // gets changed in setup via serial menu input option later
                                               // adding/subtracting 400 from the constant raises/lowers the 'calculated' result from readBattery() by ~1 millivolt,
                                               // simply read the rail with a DVM while running on UART power and change the constant until the calculation is accurate
-int8_t SampleIntervalMinutes = 15;           // Allowed values: 1,2,3,5,10,15,20,30 for both - must divide equally into 60!
-int8_t SampleIntervalSeconds = 0;            // minutes must be zero for intervalseconds, seconds must be zero for intervalMinutes
+uint8_t SampleIntervalMinutes = 15;           // Allowed values: 1,2,3,5,10,15,20,30 for both - must divide equally into 60!
+uint8_t SampleIntervalSeconds = 0;            // minutes must be zero for intervalseconds, seconds must be zero for intervalMinutes
                                               // NOTE: Make sure your sensor readings don't take longer than your sample interval!
                                               // If you over-run your alarm because the sensor took too long you will have to wait 24hours for next wakeup
 
@@ -477,10 +477,6 @@ Serial.print(F("Initializing sensors: "));Serial.flush();
 
 Serial.println(F("& Starting the logger:"));Serial.flush();
 
-// now fixed!
-  //if(SampleIntervalMinutes==0){ 
-  // now fixed! Serial.println(F("Alarm over-run system lockup is possible with 1 sec intervals"));Serial.flush(); 
-  //}
 //========================================================================================
 // FINAL STARTUP PROCEDURE: is to DELAY the logger until 1st sampling alarm is synchronized
 // otherwise you might get a "clipped interval" at the first hour rollover
