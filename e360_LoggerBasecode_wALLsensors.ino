@@ -22,7 +22,7 @@ These 'powers of 2' fit in the I2C buffer AND divide evenly into the EEproms har
 //#define PIRtriggersSensorReadings         // 4-bytes: Still in beta!   Do not enable this with countPIReventsPerSampleInterval - choose one or the other
 // does NOT use the regular RTC-alarm based sampling interval but instead records the seconds elapsed between EVERY PIR trigger event in a uint32_t long variable [uint16_t would overflow at ~18 hours]
 // WARNING this can use alot of memory very quickly! - recommend use with larger eeprom memory attached
-// PIRtriggersSensorReadings could be enabled with four other bytes of sensor data [for a total of 8 bytes per record] OR with another eight bytes of sensor data for a total of 16 bytes per record.
+// PIRtriggersSensorReadings could be enabled with four other bytes of sensor data [for a total of 8 bytes per record] OR with another 12 bytes of sensor data for a total of 16 bytes per record.
 
 // LowestBattery & RTC_Temperature are the 2 byte 'base values' which are generally recorded with every sensor reading (as they require no extra sensor hardware beyond the logger itself)
 #define logLowestBattery                    // 1-byte (compressed): saves LowestBattery recorded during operation
