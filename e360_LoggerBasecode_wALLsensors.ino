@@ -1,5 +1,5 @@
 // 2-module logger code by Edward Mallon - modified 2023 for the e360 course at Northwestern University
-// https://thecavepearlproject.org/2022/03/09/powering-a-promini-logger-for-one-year-on-a-coin-cell/
+// https://thecavepearlproject.org/2023/12/01/the-e360-a-10-classroom-data-logger-for-science/
 /*
 This program supports an ongoing series of DIY 'Classroom Logger' tutorials from the Cave Pearl Project. 
 The goal is to provide a starting point for self-built student projects in environmental monitoring.
