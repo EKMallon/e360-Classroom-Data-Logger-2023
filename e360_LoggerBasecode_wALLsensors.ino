@@ -2026,7 +2026,7 @@ void initializeSI7051() {
   }
 }
 
-int readSI7051() {    //Conversion time: 14-bit temps = 10 ms @ 120 μA, peak current during I2C operations 4.0 mA
+uint16_t readSI7051() {    //Conversion time: 14-bit temps = 10 ms @ 120 μA, peak current during I2C operations 4.0 mA
 //---------------------------------------------------------------------------------------------
 
   //first transaction targets the memory register(s) we want to read
