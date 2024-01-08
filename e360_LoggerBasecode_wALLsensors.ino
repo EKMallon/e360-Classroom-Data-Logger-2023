@@ -48,10 +48,6 @@ These 'powers of 2' fit in the I2C buffer AND divide evenly into the EEproms har
 #define EEpromI2Caddr 0x57                  // Run a bus scanner to check where your eeproms are https://github.com/RobTillaart/MultiSpeedI2CScanner
 #define EEbytesOfStorage 4096               // Default: 0x57 / 4096 bytes for 4k on RTC module // 32k I2C EEprom Module: set to 0x50 & 32768   // note EEmemoryPointr would have to got be uint32_t for 64k eeproms
 
-// Adjust the following to match your logger:
-const char loggerConfiguration[] PROGMEM = "YOUR NAME HERE e360/es390 logger,1126400(change this to match yours),4kEEprom,NTC[7]&LDR[6]NOref104cap,LED_r9_b10_g11_gnd12";
-const char deploymentDetails[] PROGMEM =   "Lab09: PIR sensor";
-
 //#ifdef readNTC_onD7                         // also enable matching define in setup_sendboilerplate2serialMonitor() to print this info with your data
 // const char sensorCalibrationInfo[] PROGMEM = "No cal. for NTC sensor yet...";
 // after calbration something like: PROGMEM = "YourName_03,Calibrated 202202:,A=,0.001246979,B=,0.000216248,C=,0.0000001537444523,R(25°C)=9834.81Ω,β=3850.83K,RTCy=0.9744x -0.4904";
@@ -118,7 +114,7 @@ uint8_t byteBuffer1 = 9;                      // 1-byte (8 bit) type = unsigned 
 uint8_t byteBuffer2 = 9;                      // note: uint8_t is the same as byte variable type
 int16_t integerBuffer = 9999;                 // 2-byte from -32,768 to 32,767
 uint16_t uint16_Buffer= 9999;                 // 2-byte from 0 to 65535
-//int32_t int32_Buffer = 9999;                // 4-byte from -2,147,483,648 to 2,147,483,647
+int32_t int32_Buffer = 9999;                // 4-byte from -2,147,483,648 to 2,147,483,647
 uint32_t uint32_Buffer= 9999;                 // 4-byte from 0 to 4,294,967,295 //used for millis() timing
 float floatBuffer = 9999.99;                   // for float calculations
 uint8_t hiByte,loByte;                        // for splitting 16-byte integers during EEprom save
@@ -179,6 +175,7 @@ volatile boolean d3_INT1_Flag = false;
 //------------------------------------------------------------------------------
   // we are not using a library - init and read functions for si7051 at end of program
   uint16_t TEMP_si7051=0;                  //NOTE sensors output overruns this uint16_t at 40C!
+  #define Si7051_Resolution 0b00000000       // 0b00000000 = 14-bit (0.01 C rez), 13 bit = 0b10000000 (0.02 C rez), 12 bit = 0b00000001 (0.04 C rez),11 bit = 0b10000001 (0.08 C rez)
 #endif
 
 #ifdef OLED_64x32_SSD1306
@@ -1211,20 +1208,34 @@ void input_d3_interrupt_ISR() {
 #endif  //#if defined(countPIReventsPerSampleInterval)
 
 //==========================================================================================
-//  *  *  *  *  *  *  *  *  *  FUNCTIONS called during Setup()  *  *  *  *  *  *  *  *  *  * 
-//==========================================================================================
 void setup_sendboilerplate2serialMonitor(){      
 //-----------------------------------------------------------------------------------------
 //NOTE:(__FlashStringHelper*) is needed to print variables is stored in PROGMEM instead of regular memory
-    Serial.print(F("CodeBuild: ")); Serial.print(fileNAMEonly);         // or use Serial.println((__FlashStringHelper*)codebuild); //for the entire path + filename
-    Serial.print(F(" Compiled: "));Serial.print((__FlashStringHelper*)compileDate);
+    Serial.print(F("CodeBuild:,")); Serial.print(fileNAMEonly);         // or use Serial.println((__FlashStringHelper*)codebuild); //for the entire path + filename
+    Serial.print(F("    Compiled: "));Serial.print((__FlashStringHelper*)compileDate);
     Serial.print(F(" @ ")); Serial.println((__FlashStringHelper*)compileTime);
-    Serial.print(F("Hardware: ")); Serial.println((__FlashStringHelper*)loggerConfiguration);
-    Serial.print(F("Last Deployment: ")); Serial.println((__FlashStringHelper*)deploymentDetails); 
-    
-    //#ifdef readNTC_onD7
-    //  Serial.println((__FlashStringHelper*)sensorCalibrationInfo);
-    //#endif
+
+// internal eeprom 0-1023 bytes:
+//  first 0-54 =55 bytes reserved for startup variables & sensor constants
+//  next 55-310 =255 bytes of internal eeprom for 'Hardware Details' (usually programmed at startup by ed & not changed later)
+//  next 311-511 =200 bytes for deployment description
+//  remaining 512 to 1023 = 255 bytes for fonts (?) on loggers with OLED screens although those could also be stored in progmem?
+
+    char OnecharBuffer;
+    // retrieve & send 100 character hardware details stored in 328p internal eeprom 
+    Serial.print(F("Logger:,")); //Serial.println((__FlashStringHelper*)loggerConfiguration);
+    for (uint16_t k = 55; k < 156; k++) { OnecharBuffer = EEPROM.read(k); Serial.print(OnecharBuffer); }
+    Serial.println();
+
+    // retrieve & send 100 character calibration constants stored in 328p internal eeprom
+    Serial.print(F("Calibration:,"));
+    for (uint16_t k = 257; k < 357; k++) { OnecharBuffer = EEPROM.read(k); Serial.print(OnecharBuffer); }
+    Serial.println();
+  
+    // retrieve & send 100 character deployment description stored in 328p internal eeprom
+    Serial.print(F("Last Deployment:,"));
+    for (uint16_t k = 156; k < 257; k++) { OnecharBuffer = EEPROM.read(k); Serial.print(OnecharBuffer); }
+    Serial.println();
     
     Serial.flush();
 }
@@ -1257,14 +1268,23 @@ void setup_displayStartMenu() {
               startMenu_setSampleInterval(); Serial.setTimeout(1000); 
               displayMenuAgain=true;  break;
             case 4:
-              ECHO_TO_SERIAL = !ECHO_TO_SERIAL;           // toggles the boolean true/false variable
+              startMenu_updateDeploymentInfo(); Serial.setTimeout(1000);
               displayMenuAgain=true;  break;
-            case 5:
+             case 5:
+              startMenu_updateLoggerInfo(); Serial.setTimeout(1000);
+              displayMenuAgain=true;  break;
+            case 6:
+              startMenu_updateCalibrationConstants(); Serial.setTimeout(1000);
+              displayMenuAgain=true;  break;
+            case 7:
               startMenu_setVrefConstant(); Serial.setTimeout(1000);
               displayMenuAgain=true;  break; 
-            case 6:                                       // this is the 'start logger' option
+            case 8:
+              ECHO_TO_SERIAL = !ECHO_TO_SERIAL;           // toggles the boolean true/false variable
+              displayMenuAgain=true;  break;           
+            case 9:                                       // this is the 'start logger' option
               wait4input=false; break;                    // wait4input=false breaks you out of the switch-case loop & sends you back to Setup function where displayStartMenu was first called
-            case 7:
+            case 10:
             startMenu_sendData2Serial(false);             // a 'hidden' debugging option not displayed in the startmenu
             displayMenuAgain=true;  break;                // lets you see the RAW bytes stored in your eeprom
               
@@ -1338,9 +1358,9 @@ void startMenu_printMenuOptions(){          // note: setup_sendboilerplate2seria
     Serial.println();
     Serial.println(F("Select one of the following options:"));
     Serial.println(F("  [1] DOWNLOAD Data"));
-    Serial.println(F("  [2] Set CLOCK        [3] Set INTERVAL"));
-    Serial.println(F("  [4] Toggle SERIAL    [5] Change VREF"));
-    Serial.println(F("  [6] START logging"));
+    Serial.println(F("  [2] Set CLOCK       [3] Set INTERVAL    [4] DEPLOYMENT info"));
+    Serial.println(F("  [5] Logger Details  [6] Cal. Constants  [7] Change Vref"));
+    Serial.println(F("  [8] Toggle Serial   [9] START logging"));
     Serial.println(); Serial.flush();
 }   //terminates startMenu_printMenuOptions
 
@@ -1393,22 +1413,33 @@ do {
 
 void startMenu_setRTCtime(){
 //-----------------------------------------------------------------------------------------
+  uint8_t set_t_second,set_t_minute,set_t_hour,set_t_day,set_t_month; 
+  uint16_t set_t_year;
+
   Serial.println(F("Enter current date/time with digits as indicated:"));  // note Serial.parseInt will ONLY ACCEPT NUMBERS from the serial window!
   Serial.setTimeout(100000); while (Serial.available() != 0 ) {Serial.read();}   // clears any old leftover text out of the serial buffer 
-  Serial.print(F("YYYY:"));     t_year = Serial.parseInt();      Serial.println(t_year);
-  Serial.print(F("MM:"));       t_month = Serial.parseInt();     Serial.println(t_month);
-  Serial.print(F("DD:"));       t_day = Serial.parseInt();       Serial.println(t_day);
-  Serial.print(F("(24hour) HH:")); t_hour = Serial.parseInt();   Serial.println(t_hour);
-  Serial.print(F("MM:"));       t_minute = Serial.parseInt();    Serial.println(t_minute);
-  Serial.print(F("SS:"));       t_second = Serial.parseInt();    Serial.println(t_second);
+  Serial.print(F("YYYY:"));     set_t_year = Serial.parseInt();      Serial.println(set_t_year);
+  Serial.print(F("MM:"));       set_t_month = Serial.parseInt();     Serial.println(set_t_month);
+  Serial.print(F("DD:"));       set_t_day = Serial.parseInt();       Serial.println(set_t_day);
+  Serial.print(F("(24hour) HH:")); set_t_hour = Serial.parseInt();   Serial.println(set_t_hour);
+  Serial.print(F("MM:"));       set_t_minute = Serial.parseInt();    Serial.println(set_t_minute);
+  Serial.print(F("SS:"));       set_t_second = Serial.parseInt();    Serial.println(set_t_second);
 
-  if (t_month==0 && t_day==0){                          // this is a very crude error catch //this needs to be further developed
+  if (set_t_month==0 && set_t_day==0){                          // this is a very crude error catch //this needs to be further developed
     Serial.println(F("Not valid input to set RTC time!"));
     return;                                             //shut down the logger - user will need to re-open the serial window to restart the logger
     } else {
-    RTC_DS3231_setTime(); delay(15);                    // give the RTC register memory write a little time
+
+    RTC_DS3231_getTime();                               //updates all the t_variables
+    int32_Buffer= RTC_DS3231_unixtime();                //current unix time on RTC clock _unixtime is just a calculation
+    t_year=set_t_year; t_second=set_t_second; t_minute=set_t_minute;
+    t_hour=set_t_hour; t_day=set_t_day; t_month=set_t_month;      
+    RTC_DS3231_setTime();
+    int32_Buffer = RTC_DS3231_unixtime() - int32_Buffer;//what we are adjusting the time to 
+    Serial.print(F("Clock updated by "));Serial.print(int32_Buffer);Serial.print(F(" seconds"));
+    delay(15);                                          // more RTC register memory write-time
     i2c_setRegisterBit(DS3231_ADDRESS,DS3231_STATUS_REG,7,0); //clear the OSF flag after time is set
-    }   //terminates if (t_month==0 && t_day==0){
+    }   //terminates if (set_t_month==0 && set_t_day==0){
 
 }
 
@@ -1471,38 +1502,37 @@ void startMenu_sendData2Serial(boolean convertDataFlag){ // called at startup vi
         }else{                                          //  normal minute based alarms:
         secondsPerSampleInterval = 60UL*SampleIntervalMinutes;
         }
-    
-  uint32_t EEmemPointr = 0;                             // a counter that advances through the EEprom Memory in bytesPerRecord increments
-  uint32_t RecordMemoryPointer= 0;                      // uint32_t because overshoots uint16_t on systems with multiple eeproms
+
+  uint32_t startMillis = millis();                      // track how long it takes for the data download
+  EEmemoryPointr = 0;                                   // a counter that advances through the EEprom Memory in bytesPerRecord increments
     
 
   do{    // this big do-while loop readback must EXACTLY MATCH the data saving pattern in our main loop:
   //---------------------------------------------------------------------------------------------------------- 
    
-  RecordMemoryPointer = EEmemPointr;                        // a pointer for each byte within a given record
-  
   //if the first byte readback process is ZERO then we've reached our end of data marker
-  byteBuffer1 = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer); 
+  byteBuffer1 = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr); 
   if(byteBuffer1==0 & convertDataFlag){break;}              // this breaks us out of the do-while readback loop
 
-  if (!convertDataFlag){    // then output raw bytes exactly as read from eeprom [with no timestamp] // this is ONLY used for debugging
+if (!convertDataFlag){    // then output raw bytes exactly as read from eeprom [with no timestamp] // this is ONLY used for debugging
         for (uint8_t j = 0; j < bytesPerRecord; j++) {
-        byteBuffer1 = i2c_eeprom_read_byte(EEpromI2Caddr,(RecordMemoryPointer+j));
+        byteBuffer1 = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr);
         Serial.print(byteBuffer1); Serial.print(F(","));    // outputs raw bytes as read from eeprom:
-        }     
-  } else { // if convertDataFlag is true then raw eeprom bytes get re-constituted back to variables
+        EEmemoryPointr++; 
+        }      
+} else { // if convertDataFlag is true then raw eeprom bytes get re-constituted back to variables
 
 #ifdef PIRtriggersSensorReadings   //4-byte reconstruction of d3_INT1_elapsedSeconds // saved from low byte first to high byte last
-      d3_INT1_elapsedSeconds = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer); //lo byte
-      RecordMemoryPointer++;
-      uint32_Buffer = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer);
-      RecordMemoryPointer++;
+      d3_INT1_elapsedSeconds = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr); //lo byte
+      EEmemoryPointr++;
+      uint32_Buffer = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr);
+      EEmemoryPointr++;
       d3_INT1_elapsedSeconds = (uint32_Buffer << 8) | d3_INT1_elapsedSeconds;
-      uint32_Buffer = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer);
-      RecordMemoryPointer++;
+      uint32_Buffer = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr);
+      EEmemoryPointr++;
       d3_INT1_elapsedSeconds = (uint32_Buffer << 16) | d3_INT1_elapsedSeconds;
-      uint32_Buffer = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer); //high byte
-      RecordMemoryPointer++; 
+      uint32_Buffer = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr); //high byte
+      EEmemoryPointr++; 
       d3_INT1_elapsedSeconds = (uint32_Buffer << 24) | d3_INT1_elapsedSeconds;
       
       d3_INT1_elapsedSeconds=d3_INT1_elapsedSeconds-1; // removes our zero trap on the first byte
@@ -1518,43 +1548,43 @@ void startMenu_sendData2Serial(boolean convertDataFlag){ // called at startup vi
   // order of sensors & bytes listed here must EXACLTY MATCH the order in which you loaded the bytes into the eeprom in the main loop
 
 #ifdef logLowestBattery  //  1 byte index encoded (slight loss of resolution compared to original two bytes)
-      uint16_Buffer = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer);
-      RecordMemoryPointer++;
+      uint16_Buffer = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr);
+      EEmemoryPointr++;
       uint16_Buffer =(uint16_Buffer*16)+1700;               // REVERSING the calculation we used to index-compress the data into one byte(note <<4 is the same as *16)
       Serial.print(uint16_Buffer);Serial.print(F(","));
 #endif
 
 #ifdef logRTC_Temperature                                   // RTC temperature 1-byte compressed: low side cutoff at 1 for minimum reading of -12.25C
-      integerBuffer = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer);
-      RecordMemoryPointer++;
+      integerBuffer = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr);
+      EEmemoryPointr++;
       floatBuffer = integerBuffer;
       floatBuffer = (floatBuffer/4.0)-10.0;                 // REVERSING the calculation we used to compress the data into one byte
       Serial.print(floatBuffer,2);Serial.print(F(","));     // ,2) specifies that you only print two decimal places
 #endif  //#ifdef logRTC_Temperature 
 
 #ifdef countPIReventsPerSampleInterval
-      loByte = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer);
-      RecordMemoryPointer++;             
-      hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer);
-      RecordMemoryPointer++;                   
+      loByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr);
+      EEmemoryPointr++;             
+      hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr);
+      EEmemoryPointr++;                   
       uint16_Buffer = (uint16_t)((hiByte << 8) | loByte); 
       Serial.print(uint16_Buffer-1);Serial.print(F(","));   // 'minus 1' because we added one as our zero trap before the count was saved
 #endif
 
 #ifdef readNTC_onD7
-      loByte = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer);
-      RecordMemoryPointer++;             
-      hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer);
-      RecordMemoryPointer++;                   
+      loByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr);
+      EEmemoryPointr++;             
+      hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr);
+      EEmemoryPointr++;                   
       uint16_Buffer = (uint16_t)((hiByte << 8) | loByte); 
       Serial.print(uint16_Buffer);Serial.print(F(","));
 #endif
 
 #ifdef readLDR_onD6
-      loByte = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer);
-      RecordMemoryPointer++;             
-      hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer);
-      RecordMemoryPointer++;                   
+      loByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr);
+      EEmemoryPointr++;             
+      hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr);
+      EEmemoryPointr++;                   
       uint16_Buffer = (uint16_t)((hiByte << 8) | loByte); 
       Serial.print(uint16_Buffer);Serial.print(F(","));
 #endif
@@ -1567,10 +1597,10 @@ void startMenu_sendData2Serial(boolean convertDataFlag){ // called at startup vi
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 #ifdef bh1750_Address
-      loByte = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer); //low byte
-      RecordMemoryPointer++;
-      lux_BH1750_RawInt = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer); //hi byte
-      RecordMemoryPointer++;
+      loByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr); //low byte
+      EEmemoryPointr++;
+      lux_BH1750_RawInt = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr); //hi byte
+      EEmemoryPointr++;
       lux_BH1750_RawInt = (lux_BH1750_RawInt << 8) | loByte;
       floatBuffer = bh1750.calcLux(lux_BH1750_RawInt,BH1750_QUALITY_LOW,BH1750_MTREG_LOW);
       Serial.print(floatBuffer,0); //the decimals are meaningless at this resolution 
@@ -1579,49 +1609,49 @@ void startMenu_sendData2Serial(boolean convertDataFlag){ // called at startup vi
 
 
 #ifdef recordBMPtemp           // Bmp280_Temp_degC, 2-bytes, low byte first
-      loByte = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer); //low byte
-      RecordMemoryPointer++;
-      hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer); //hi byte
-      RecordMemoryPointer++;
+      loByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr); //low byte
+      EEmemoryPointr++;
+      hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr); //hi byte
+      EEmemoryPointr++;
       integerBuffer = (int16_t)((hiByte << 8) | loByte);
       floatBuffer  = (float)(integerBuffer)/100.0;
       Serial.print(floatBuffer,2);Serial.print(",");
 #endif
 
 #ifdef recordBMPpressure      // Bmp280_Pr_mBar, 2-bytes, low byte first
-      loByte = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer); //low byte
-      RecordMemoryPointer++;
-      hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer); //hi byte
-      RecordMemoryPointer++;
+      loByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr); //low byte
+      EEmemoryPointr++;
+      hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr); //hi byte
+      EEmemoryPointr++;
       integerBuffer = (int16_t)((hiByte << 8) | loByte);
       floatBuffer  = (float)(integerBuffer)/10.0;
       Serial.print(floatBuffer,1);Serial.print(",");
 #endif
 
 #ifdef recordBMPaltitude            // Bmp280_Temp_degC, 2-bytes, low byte first
-      loByte = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer); //low byte
-      RecordMemoryPointer++;
-      hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer); //hi byte
-      RecordMemoryPointer++;
+      loByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr); //low byte
+      EEmemoryPointr++;
+      hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr); //hi byte
+      EEmemoryPointr++;
       integerBuffer = (int16_t)((hiByte << 8) | loByte);
       floatBuffer  = (float)(integerBuffer)/100.0;  //Note: *100 over runs the integer at higher altitudes, in that case switch to *10
       Serial.print(floatBuffer,1);Serial.print(",");
 #endif
       
 #ifdef logCurrentBattery            // stored as two data bytes in the Main Loop, with lowByte first, then highByte
-      loByte = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer);
-      RecordMemoryPointer++;             
-      hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer);
-      RecordMemoryPointer++;                   
+      loByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr);
+      EEmemoryPointr++;             
+      hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr);
+      EEmemoryPointr++;                   
       uint16_Buffer = (uint16_t)((hiByte << 8) | loByte); 
       Serial.print(uint16_Buffer);Serial.print(F(","));
 #endif
 
 #ifdef Si7051_Address 
-        loByte = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer);
-        RecordMemoryPointer++;
-        TEMP_si7051 = i2c_eeprom_read_byte(EEpromI2Caddr,RecordMemoryPointer);
-        RecordMemoryPointer++;
+        loByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr);
+        EEmemoryPointr++;
+        TEMP_si7051 = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr);
+        EEmemoryPointr++;
         TEMP_si7051 = (TEMP_si7051 << 8) | loByte;           // NOTE: no casting needed with hiByte loaded into TEMP_si7051 which is an integer variable
         Serial.print(((175.26*TEMP_si7051)/65536.0)-46.85,3);Serial.print(F(","));  //calculation is promoted to float by the decimal places
         //integer converted to celcius (3 decimals output)   //or Serial.print(TEMP_si7051); to print raw integer 
@@ -1630,14 +1660,220 @@ void startMenu_sendData2Serial(boolean convertDataFlag){ // called at startup vi
   } //terminators if(convertDataFlag)
   
   Serial.println();
-  EEmemPointr = EEmemPointr + bytesPerRecord;
-  
-  } while(EEmemPointr < EEbytesOfStorage); // terminates the readback loop when pointer reaches end of memory space
+  } while(EEmemoryPointr < EEbytesOfStorage); // terminates the readback loop when pointer reaches end of memory space
   //---------------------------------------------------------------------------------------
 
+  Serial.print(F("Download took: "));Serial.print((millis() - startMillis));Serial.println(F(" msec"));
   Serial.flush();
+  EEmemoryPointr = 0;                       //back to starup default value
 }  // terminates sendData2Serial() function
 
+void startMenu_updateLoggerInfo(){
+//----------------------------------------------------------------------------------------------------
+// Serial input method from Example 3  https://forum.arduino.cc/t/serial-input-basics-updated/382007
+//------------------------------------------------------------------------------------------------------
+
+Serial.println(F("Type < a description of the logger hardware > with < & > at ends + [Enter]"));
+Serial.println(F(" < MAXIMUM 100 characters >                             [Timeout: 200 sec]"));
+while(Serial.available()) { byteBuffer1 = Serial.read();}   // clears any leftover bytes in serial buffer
+//Serial.setTimeout(100000); not needed here?
+
+byteBuffer1 = 0; // counts the # of receivedChars // Char is signed and that Byte is unsigned.
+boolean newData = false;
+boolean recvInProgress = false;
+char startMarker = '<';
+char endMarker = '>';
+char rc; //incoming character
+byte numChars = 101;  //sets maximum number of characters that can be recieved
+char receivedChars[numChars];
+
+uint32_t startMillis = millis();
+do {   // timeout do-while loop
+
+   while (Serial.available() > 0 && newData == false) {
+        rc = Serial.read();
+
+        if (recvInProgress == true) {
+                if (rc != endMarker) {
+                receivedChars[byteBuffer1] = rc;
+                byteBuffer1++;
+                    if (byteBuffer1 >= numChars) {
+                    byteBuffer1 = numChars - 1;
+                    }
+                } else {
+                receivedChars[byteBuffer1] = '\0'; // terminate the string
+                recvInProgress = false;
+                newData = true;
+                }
+         } else if (rc == startMarker) { recvInProgress = true;}
+    } //while
+    
+    if (newData) break; // breaks out of the timeout dowhile-loop after data is input
+    
+}while ((millis() - startMillis) < 200000); // 200 seconds to respond?
+
+if (!newData){   // if newData = false then return to menu
+Serial.println(F("NO valid information received -> returning to start menu"));
+Serial.flush(); return;
+}
+
+// erase previous description                 // NOTE I'm leaving LAST 512 eeprom memory locations for future use screen fonts
+for (uint16_t h = 55; h < 156; h++){         // EEPROM.update does not write new data unless new content is different from old
+    EEPROM.update(h,32);                      // writes [32] to each memory location which is the 'blank space' character in ascii
+    if ((h % 16) == 0){Serial.print(F("."));} // send progress indicator dot to the serial monitor window (every 16 characters)
+    delay(4); // writing to the internal eeprom needs 3.5 msec per byte ande adds an additional 8mA to the ProMini’s normal 5mA operating current
+    }
+
+// save new 80-character Hardware details to EEprom (serial input buffer limits you to only 80 characters input)
+  for (uint16_t i = 0; i < byteBuffer1; i++){
+    EEPROM.update(i+55,receivedChars[i]);
+    Serial.print(F("."));
+    delay(4);
+    }
+      
+  Serial.println();Serial.print(F("New Cal constants saved: "));
+  Serial.println(receivedChars);Serial.flush();
+  return;
+}// end startMenu_updateLoggerInfo
+
+void startMenu_updateCalibrationConstants(){
+//----------------------------------------------------------------------------------------------------
+// Serial input method from Example 3  https://forum.arduino.cc/t/serial-input-basics-updated/382007
+//------------------------------------------------------------------------------------------------------
+
+Serial.println(F("Paste in < CAL date, constants > with < & > at ends + [Enter]"));
+Serial.println(F(" < MAXIMUM 100 characters >                [Timeout: 200 sec]"));
+while(Serial.available()) { byteBuffer1 = Serial.read();}   // clears any leftover bytes in serial buffer
+//Serial.setTimeout(100000); not needed here?
+
+byteBuffer1 = 0; // counts the # of receivedChars // Char is signed and that Byte is unsigned.
+boolean newData = false;
+boolean recvInProgress = false;
+char startMarker = '<';
+char endMarker = '>';
+char rc; //incoming character
+byte numChars = 101;  //sets maximum number of characters that can be recieved
+char receivedChars[numChars];
+
+uint32_t startMillis = millis();
+do {   // timeout do-while loop
+
+   while (Serial.available() > 0 && newData == false) {
+        rc = Serial.read();
+
+        if (recvInProgress == true) {
+                if (rc != endMarker) {
+                receivedChars[byteBuffer1] = rc;
+                byteBuffer1++;
+                    if (byteBuffer1 >= numChars) {
+                    byteBuffer1 = numChars - 1;
+                    }
+                } else {
+                receivedChars[byteBuffer1] = '\0'; // terminate the string
+                recvInProgress = false;
+                newData = true;
+                }
+         } else if (rc == startMarker) { recvInProgress = true;}
+    } //while
+    
+    if (newData) break; // breaks out of the timeout dowhile-loop after data is input
+    
+}while ((millis() - startMillis) < 200000); // 200 seconds to respond?
+
+if (!newData){   // if newData = false then return to menu
+Serial.println(F("NO valid information received -> returning to start menu"));
+Serial.flush(); return;
+}
+
+// erase previous description                 // NOTE I'm leaving LAST 512 eeprom memory locations for future use screen fonts
+for (uint16_t h = 257; h < 358; h++){         // EEPROM.update does not write new data unless new content is different from old
+    EEPROM.update(h,32);                      // writes [32] to each memory location which is the 'blank space' character in ascii
+    if ((h % 16) == 0){Serial.print(F("."));} // send progress indicator dot to the serial monitor window (every 16 characters)
+    delay(4); // writing to the internal eeprom needs 3.5 msec per byte ande adds an additional 8mA to the ProMini’s normal 5mA operating current
+    }
+
+// save new 80-character Hardware details to EEprom (serial input buffer limits you to only 80 characters input)
+  for (uint16_t i = 0; i < byteBuffer1; i++){
+    EEPROM.update(i+257,receivedChars[i]);
+    Serial.print(F("."));
+    delay(4);
+    }
+      
+  Serial.println();Serial.print(F("New Cal constants saved: "));
+  Serial.println(receivedChars);Serial.flush();
+  return;
+}// end startMenu_updateCalibrationConstants
+
+void startMenu_updateDeploymentInfo(){
+//----------------------------------------------------------------------------------------------------
+// Serial input method from Example 3  https://forum.arduino.cc/t/serial-input-basics-updated/382007
+//------------------------------------------------------------------------------------------------------
+
+Serial.println(F("Type < description of the deployment > with < & > at ends + [Enter]"));
+Serial.println(F(" < MAXIMUM 100 characters >                      [Timeout: 200 sec]"));
+while(Serial.available()) { byteBuffer1 = Serial.read();}   // clears any leftover bytes in serial buffer
+//Serial.setTimeout(100000); not needed here?
+
+byteBuffer1 = 0; // counts the # of receivedChars // Char is signed and that Byte is unsigned.
+boolean newData = false;
+boolean recvInProgress = false;
+char startMarker = '<';
+char endMarker = '>';
+char rc; //incoming character
+byte numChars = 101;  //sets maximum number of characters that can be recieved
+char receivedChars[numChars];
+
+uint32_t startMillis = millis();
+do {   // timeout do-while loop
+
+   while (Serial.available() > 0 && newData == false) {
+        rc = Serial.read();
+
+        if (recvInProgress == true) {
+                if (rc != endMarker) {
+                receivedChars[byteBuffer1] = rc;
+                byteBuffer1++;
+                    if (byteBuffer1 >= numChars) {
+                    byteBuffer1 = numChars - 1;
+                    }
+                } else {
+                receivedChars[byteBuffer1] = '\0'; // terminate the string
+                recvInProgress = false;
+                newData = true;
+                }
+         } else if (rc == startMarker) { recvInProgress = true;}
+    } //while
+    
+    if (newData) break; // breaks out of the timeout dowhile-loop after data is input
+    
+}while ((millis() - startMillis) < 200000); // 200 seconds to respond?
+
+if (!newData){   // if newData = false then return to menu
+Serial.println(F("NO valid information received -> returning to start menu"));
+Serial.flush(); return;
+}
+
+// erase previous description                 // NOTE I'm leaving LAST 512 eeprom memory locations for future use screen fonts
+for (uint16_t h = 156; h < 257; h++){         // EEPROM.update does not write new data unless new content is different from old
+    EEPROM.update(h,32);                      // writes [32] to each memory location which is the 'blank space' character in ascii
+    if ((h % 16) == 0){Serial.print(F("."));} // send progress indicator dot to the serial monitor window (every 16 characters)
+    delay(4); // writing to the internal eeprom needs 3.5 msec per byte ande adds an additional 8mA to the ProMini’s normal 5mA operating current
+    }
+
+// save new 80-character Hardware details to EEprom (serial input buffer limits you to only 80 characters input)
+//for (uint16_t i = 0; i < command.length(); i++){
+  for (uint16_t i = 0; i < byteBuffer1; i++){
+    //EEPROM.update(i+156,command.charAt(i));
+    EEPROM.update(i+156,receivedChars[i]);
+    //if ((i % 16) == 0){Serial.print(F("."));}
+    Serial.print(F("."));
+    delay(4);
+    }
+      
+  Serial.println();Serial.print(F("New details saved: "));
+  Serial.println(receivedChars);Serial.flush();
+  return;
+}// end startMenu_updateDeploymentInfo
 
 //==========================================================================================
 //==========================================================================================
@@ -2005,16 +2241,20 @@ static uint16_t rtc_date2days(uint16_t y, uint8_t m, uint8_t d) {
 // and we usually buy these sensors from ClosedCube on Tindie: https://www.tindie.com/stores/closedcube/
 
 #ifdef Si7051_Address  //compiler will include these functions up to the next #endif statement
-
 void initializeSI7051() {
 //---------------------------------------------------------------------------------------------
   if(ECHO_TO_SERIAL){
   Serial.println(F("INIT: SI7051 sensor..."));Serial.flush(); 
   }
-  
+
   Wire.beginTransmission(Si7051_Address);
-  Wire.write(0xE6);                         //settings regester
-  Wire.write(0x0);                          //when bit 0 and bit 7 to zero, sets highest 14 bit resolution on sensor
+  Wire.write(0xFE); //sensor reset
+  Wire.endTransmission();
+  LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);
+ 
+  Wire.beginTransmission(Si7051_Address);
+  Wire.write(0xE6);                         // Command Code:  Write User Register 0xE6  //Command Code:  Read User Register 0xE7
+  Wire.write(Si7051_Resolution);            // Only bit 7 &  bit 0 can be set by user
   byteBuffer1 = Wire.endTransmission();
   
   if ( byteBuffer1 != 0) {
@@ -2029,11 +2269,12 @@ void initializeSI7051() {
 uint16_t readSI7051() {    //Conversion time: 14-bit temps = 10 ms @ 120 μA, peak current during I2C operations 4.0 mA
 //---------------------------------------------------------------------------------------------
 
-  //first transaction targets the memory register(s) we want to read
+  //first transaction starts reading
   Wire.beginTransmission(Si7051_Address);
-  Wire.write(0xF3);
-  Wire.write(Si7051_Address);
+  Wire.write(0xF3);  //Device will NACK the slave address byte until conversion is complete.
+  //The measure temperature commands 0xE3 and 0xF3 will perform a temperature measurement and return the measurement value.  
   byteBuffer1 = Wire.endTransmission();
+  
     if ( byteBuffer1 != 0) {
       if(ECHO_TO_SERIAL){                   //if echo is on, we are in debug mode, and errors force a halt.
       Serial.println(F("FAIL request data:si7051")); Serial.flush(); 
@@ -2041,15 +2282,15 @@ uint16_t readSI7051() {    //Conversion time: 14-bit temps = 10 ms @ 120 μA, pe
       }
     byteBuffer1=0;
   } 
-  //delay(10);
-  LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF); // some of my sensors need settling time after a register change.
+  LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);     // some of my sensors need settling time after a register change.
+  // actual conversion times: 14-bit 10.8 ms //13-bit 6.2 ms //12-bit 3.8 ms //11-bit 2.4 ms
 
   //second I2C transaction requests the data from those memory registers
   Wire.requestFrom(Si7051_Address, 2);       //this sensor stores its output in two memory registers
   byte msb = Wire.read();
   byte lsb = Wire.read();
   uint16_t val= msb << 8 | lsb;             // merge the two output register bytes into one integer number
-  return val;                               //note:  to calculate TEMP_degC =(175.26*val) / 65536 - 46.85;
+  return val;                               // note:  to calculate TEMP_degC =(175.26*val) / 65536 - 46.85;
 }
 
 #endif // end of code for SI7051 sensor included via controlling #ifdef / #endif statements
