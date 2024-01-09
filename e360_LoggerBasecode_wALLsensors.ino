@@ -1391,7 +1391,7 @@ do {
          Serial.println(F("Enter sub-minute interval as 1,2,3,5,10,15, or 30 seconds: (sampling time may over-run the alarm!)"));
           byteBuffer2 =0;
          SampleIntervalSeconds = Serial.parseInt();
-          byteBuffer2 = SampleIntervalSeconds ? 30 % SampleIntervalSeconds : 0; // ERROR check: input must be valid divisor of 30 OR zero
+          byteBuffer2 = SampleIntervalSeconds ? 60 % SampleIntervalSeconds : 0; // ERROR check: input must be valid divisor of 30 OR zero
         }while ((byteBuffer2 !=0) || (SampleIntervalSeconds>30));               // or while condition fails & you have to re-enter the number
       Serial.print(F("  Sub-minute Sample Interval: ")); Serial.print(SampleIntervalSeconds);Serial.println(F(" seconds"));
       }
