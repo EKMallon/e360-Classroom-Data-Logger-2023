@@ -48,11 +48,6 @@ These 'powers of 2' fit in the I2C buffer AND divide evenly into the EEproms har
 #define EEpromI2Caddr 0x57                  // Run a bus scanner to check where your eeproms are https://github.com/RobTillaart/MultiSpeedI2CScanner
 #define EEbytesOfStorage 4096               // Default: 0x57 / 4096 bytes for 4k on RTC module // 32k I2C EEprom Module: set to 0x50 & 32768   // note EEmemoryPointr would have to got be uint32_t for 64k eeproms
 
-//#ifdef readNTC_onD7                         // also enable matching define in setup_sendboilerplate2serialMonitor() to print this info with your data
-// const char sensorCalibrationInfo[] PROGMEM = "No cal. for NTC sensor yet...";
-// after calbration something like: PROGMEM = "YourName_03,Calibrated 202202:,A=,0.001246979,B=,0.000216248,C=,0.0000001537444523,R(25°C)=9834.81Ω,β=3850.83K,RTCy=0.9744x -0.4904";
-//#endif
-
 #define LED_r9_b10_g11_gnd12 installed      // enables code for RGB indicator LED //1k limit resistor on shared GND line! // Red LED on D13 gets used as indicator if this #define is commented out
 
 #include <Wire.h>       // I2C bus coms library: RTC, EEprom & Sensors
