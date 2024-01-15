@@ -1,5 +1,6 @@
 // 2-module logger code by Edward Mallon - modified 2023 for the e360 course at Northwestern University
 // https://thecavepearlproject.org/2023/12/01/the-e360-a-classroom-data-logger-for-science/
+
 /*
 This program supports an ongoing series of DIY 'Classroom Logger' tutorials from the Cave Pearl Project. 
 The goal is to provide a starting point for self-built student projects in environmental monitoring.
@@ -525,7 +526,32 @@ RTC_DS3231_getTime();                     // populates the global variables t_da
   #ifdef PIRtriggersSensorReadings
     previousPIRtriggerTime = uint32_Buffer;
   #endif
-  //------------------------------------------------------------------------------  
+
+//------------------------------------------------------------------------------  
+// Transfer BACKUP COPY of starting parameters in bytes 0-64 internal 328p eeprom into 0-64 bytes of external eeprom
+// done in four steps because wire buffer can only transfer 16 bytes at a time
+
+  Wire.beginTransmission(EEpromI2Caddr);   // physicalEEpromAddr = block[0];   
+  Wire.write(0); Wire.write(0);       // two bytes to specify the external eeprom address
+  for (uint8_t p = 0; p < 16; p++) { byteBuffer1 = EEPROM.read(p); Wire.write(byteBuffer1);}
+  Wire.endTransmission(); delay(12); // AT24c32 Self-Timed Write Cycle (10 ms max) // LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);
+  
+  Wire.beginTransmission(EEpromI2Caddr);          
+  Wire.write(0); Wire.write(16);       // two bytes to specify the external eeprom address
+  for (uint8_t q = 16; q < 32; q++) { byteBuffer1 = EEPROM.read(q); Wire.write(byteBuffer1);}
+  Wire.endTransmission(); delay(12);
+
+  Wire.beginTransmission(EEpromI2Caddr);          
+  Wire.write(0); Wire.write(32);       // two bytes to specify the external eeprom address
+  for (uint8_t r = 32; r < 48; r++) { byteBuffer1 = EEPROM.read(r); Wire.write(byteBuffer1);}
+  Wire.endTransmission(); delay(12);  
+
+  Wire.beginTransmission(EEpromI2Caddr);          
+  Wire.write(0); Wire.write(48);       // two bytes to specify the external eeprom address
+  for (uint8_t s = 48; s < 64; s++) { byteBuffer1 = EEPROM.read(s); Wire.write(byteBuffer1);}
+  Wire.endTransmission(); delay(12); 
+
+//------------------------------------------------------------------------------  
   Serial.println(F("Red&Blue LEDs will light during SYNC DELAY until logger takes 1st reading.")); 
   Serial.println(F("Then Green/Blue LED pips will show when each sensor reading is collected."));
   Serial.flush();
@@ -1219,17 +1245,17 @@ void setup_sendboilerplate2serialMonitor(){
     char OnecharBuffer;
     // retrieve & send 100 character hardware details stored in 328p internal eeprom 
     Serial.print(F("Logger:,")); //Serial.println((__FlashStringHelper*)loggerConfiguration);
-    for (uint16_t k = 55; k < 156; k++) { OnecharBuffer = EEPROM.read(k); Serial.print(OnecharBuffer); }
+    for (uint16_t k = 64; k < 165; k++) { OnecharBuffer = EEPROM.read(k); Serial.print(OnecharBuffer); }
     Serial.println();
 
     // retrieve & send 100 character calibration constants stored in 328p internal eeprom
     Serial.print(F("Calibration:,"));
-    for (uint16_t k = 257; k < 357; k++) { OnecharBuffer = EEPROM.read(k); Serial.print(OnecharBuffer); }
+    for (uint16_t k = 266; k < 367; k++) { OnecharBuffer = EEPROM.read(k); Serial.print(OnecharBuffer); }
     Serial.println();
   
     // retrieve & send 100 character deployment description stored in 328p internal eeprom
     Serial.print(F("Last Deployment:,"));
-    for (uint16_t k = 156; k < 257; k++) { OnecharBuffer = EEPROM.read(k); Serial.print(OnecharBuffer); }
+    for (uint16_t k = 165; k < 266; k++) { OnecharBuffer = EEPROM.read(k); Serial.print(OnecharBuffer); }
     Serial.println();
     
     Serial.flush();
@@ -1282,6 +1308,9 @@ void setup_displayStartMenu() {
             case 10:
             startMenu_sendData2Serial(false);             // a 'hidden' debugging option not displayed in the startmenu
             displayMenuAgain=true;  break;                // lets you see the RAW bytes stored in your eeprom
+            case 11:           
+              startMenu_restoreStartValuesFromBackup(); Serial.setTimeout(1000);    // a 'hidden' option NOT DISPLAYED in the startmenu
+              displayMenuAgain=true;  break;                // restores startup parameters from 64byte backup on external eeprom - useful if you have to replace a dead promini          
               
             default:                                      // Check milliseconds elapsed & send logger into shutdown if we've waited too long
                 if ((millis() - uint32_Buffer) > 480000) {// start menu has an 480000 = 8 minute timeout
@@ -1391,7 +1420,7 @@ do {
          Serial.println(F("Enter sub-minute interval as 1,2,3,5,10,15, or 30 seconds: (sampling time may over-run the alarm!)"));
           byteBuffer2 =0;
          SampleIntervalSeconds = Serial.parseInt();
-          byteBuffer2 = SampleIntervalSeconds ? 60 % SampleIntervalSeconds : 0; // ERROR check: input must be valid divisor of 30 OR zero
+          byteBuffer2 = SampleIntervalSeconds ? 30 % SampleIntervalSeconds : 0; // ERROR check: input must be valid divisor of 30 OR zero
         }while ((byteBuffer2 !=0) || (SampleIntervalSeconds>30));               // or while condition fails & you have to re-enter the number
       Serial.print(F("  Sub-minute Sample Interval: ")); Serial.print(SampleIntervalSeconds);Serial.println(F(" seconds"));
       }
@@ -1713,7 +1742,7 @@ Serial.flush(); return;
 }
 
 // erase previous description                 // NOTE I'm leaving LAST 512 eeprom memory locations for future use screen fonts
-for (uint16_t h = 55; h < 156; h++){         // EEPROM.update does not write new data unless new content is different from old
+for (uint16_t h = 64; h < 165; h++){         // EEPROM.update does not write new data unless new content is different from old
     EEPROM.update(h,32);                      // writes [32] to each memory location which is the 'blank space' character in ascii
     if ((h % 16) == 0){Serial.print(F("."));} // send progress indicator dot to the serial monitor window (every 16 characters)
     delay(4); // writing to the internal eeprom needs 3.5 msec per byte ande adds an additional 8mA to the ProMini’s normal 5mA operating current
@@ -1721,7 +1750,7 @@ for (uint16_t h = 55; h < 156; h++){         // EEPROM.update does not write new
 
 // save new 80-character Hardware details to EEprom (serial input buffer limits you to only 80 characters input)
   for (uint16_t i = 0; i < byteBuffer1; i++){
-    EEPROM.update(i+55,receivedChars[i]);
+    EEPROM.update(i+64,receivedChars[i]);
     Serial.print(F("."));
     delay(4);
     }
@@ -1781,7 +1810,7 @@ Serial.flush(); return;
 }
 
 // erase previous description                 // NOTE I'm leaving LAST 512 eeprom memory locations for future use screen fonts
-for (uint16_t h = 257; h < 358; h++){         // EEPROM.update does not write new data unless new content is different from old
+for (uint16_t h = 266; h < 367; h++){         // EEPROM.update does not write new data unless new content is different from old
     EEPROM.update(h,32);                      // writes [32] to each memory location which is the 'blank space' character in ascii
     if ((h % 16) == 0){Serial.print(F("."));} // send progress indicator dot to the serial monitor window (every 16 characters)
     delay(4); // writing to the internal eeprom needs 3.5 msec per byte ande adds an additional 8mA to the ProMini’s normal 5mA operating current
@@ -1789,7 +1818,7 @@ for (uint16_t h = 257; h < 358; h++){         // EEPROM.update does not write ne
 
 // save new 80-character Hardware details to EEprom (serial input buffer limits you to only 80 characters input)
   for (uint16_t i = 0; i < byteBuffer1; i++){
-    EEPROM.update(i+257,receivedChars[i]);
+    EEPROM.update(i+266,receivedChars[i]);
     Serial.print(F("."));
     delay(4);
     }
@@ -1849,7 +1878,7 @@ Serial.flush(); return;
 }
 
 // erase previous description                 // NOTE I'm leaving LAST 512 eeprom memory locations for future use screen fonts
-for (uint16_t h = 156; h < 257; h++){         // EEPROM.update does not write new data unless new content is different from old
+for (uint16_t h = 165; h < 266; h++){         // EEPROM.update does not write new data unless new content is different from old
     EEPROM.update(h,32);                      // writes [32] to each memory location which is the 'blank space' character in ascii
     if ((h % 16) == 0){Serial.print(F("."));} // send progress indicator dot to the serial monitor window (every 16 characters)
     delay(4); // writing to the internal eeprom needs 3.5 msec per byte ande adds an additional 8mA to the ProMini’s normal 5mA operating current
@@ -1859,7 +1888,7 @@ for (uint16_t h = 156; h < 257; h++){         // EEPROM.update does not write ne
 //for (uint16_t i = 0; i < command.length(); i++){
   for (uint16_t i = 0; i < byteBuffer1; i++){
     //EEPROM.update(i+156,command.charAt(i));
-    EEPROM.update(i+156,receivedChars[i]);
+    EEPROM.update(i+165,receivedChars[i]);
     //if ((i % 16) == 0){Serial.print(F("."));}
     Serial.print(F("."));
     delay(4);
@@ -1869,6 +1898,39 @@ for (uint16_t h = 156; h < 257; h++){         // EEPROM.update does not write ne
   Serial.println(receivedChars);Serial.flush();
   return;
 }// end startMenu_updateDeploymentInfo
+
+void startMenu_restoreStartValuesFromBackup(){        // this option NOT DISPLAYED in the start menu - only used when fixing a dead logger
+//--------------------------------------------------------------------------------------------------
+    Serial.println(F("Restoring Logger Parameters from external BACKUP cannot be undone! Proceed? y/n"));
+    while(Serial.available()) { byteBuffer1 = Serial.read();}   // clears any leftover bytes in serial buffer
+    
+    Serial.setTimeout(1000);
+    booleanBuffer = true;   byteBuffer1 = 0;
+    while (booleanBuffer) {
+        if (Serial.available()) byteBuffer1 = Serial.read();  //.read captures only ONE character at a time from the serial monitor window
+        
+        switch (byteBuffer1) {
+          case 'y': 
+            Wire.beginTransmission(EEpromI2Caddr);          
+            Wire.write(0); Wire.write(0);               // two bytes to specify the external eeprom address
+            Wire.endTransmission();
+            Wire.requestFrom(EEpromI2Caddr,(uint8_t)64);
+            for (uint8_t h=0; h<64; h++){
+              byteBuffer2 = Wire.read();
+              EEPROM.write(h, byteBuffer2);    // BLOCKING about 4ms per byte (addr, val);
+             }
+            Serial.println(F("328p startup values RESTORED from BACKUP on external EEprom")); Serial.flush();
+            booleanBuffer = false; break;
+
+          case 'n': 
+            Serial.println(F("Restore NOT done.")); Serial.flush();
+            booleanBuffer = false; break;  // return;
+            
+          default: 
+            break;
+          }       // terminates switch case
+      }           // terminates while(booleanBuffer)     
+}                 // terminatesvoid _restoreStartValuesFromBackup
 
 //==========================================================================================
 //==========================================================================================
