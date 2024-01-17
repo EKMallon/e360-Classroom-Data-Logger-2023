@@ -1914,7 +1914,7 @@ void startMenu_restoreStartValuesFromBackup(){        // this option NOT DISPLAY
             Wire.beginTransmission(EEpromI2Caddr);          
             Wire.write(0); Wire.write(0);               // two bytes to specify the external eeprom address
             Wire.endTransmission();
-            Wire.requestFrom(EEpromI2Caddr,(uint8_t)64);
+            Wire.requestFrom(EEpromI2Caddr,64);
             for (uint8_t h=0; h<64; h++){
               byteBuffer2 = Wire.read();
               EEPROM.write(h, byteBuffer2);    // BLOCKING about 4ms per byte (addr, val);
