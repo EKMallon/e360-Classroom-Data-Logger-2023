@@ -1473,9 +1473,10 @@ void startMenu_sendData2Serial(boolean convertDataFlag){ // called at startup vi
 // the order you ADDED those SENSOR READINGS when loading the EEprom write buffer in the main loop
 
 // ADD HEADER information to top rows of serial output:
-  setup_sendboilerplate2serialMonitor(); // a description of the deployment should be part of the data output
+  setup_sendboilerplate2serialMonitor();  // a description of the deployment should be part of the data output
   //Serial.println(F("Convert Unixtime to Excel Dates with = UnixTime/#secondsInaDay + DATE(1970,1,1) "));
 
+if (convertDataFlag){                     // don't print these headers if sending RAW bytes as output
   Serial.print(F("UnixTime,"));  
 
   #ifdef logLowestBattery
@@ -1512,7 +1513,10 @@ void startMenu_sendData2Serial(boolean convertDataFlag){ // called at startup vi
         Serial.print(F("SI7051[°C],"));
         #endif
 
- Serial.println();Serial.flush();
+}else{
+  Serial.print(F("ALL memory locations from EEprom as RAW byte values:"));
+  } //terminates if(convertDataFlag)
+  Serial.println();Serial.flush();
 
 //starting time value was stored in first four bytes of the 328p internal eeprom:
   uint32_t unix_timeStamp;
@@ -1534,9 +1538,13 @@ void startMenu_sendData2Serial(boolean convertDataFlag){ // called at startup vi
   do{    // this big do-while loop readback must EXACTLY MATCH the data saving pattern in our main loop:
   //---------------------------------------------------------------------------------------------------------- 
    
-  //if the first byte readback process is ZERO then we've reached our end of data marker
-  byteBuffer1 = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr); 
-  if(byteBuffer1==0 & convertDataFlag){break;}              // this breaks us out of the do-while readback loop
+  byteBuffer2 = 0;  //if the 1st & 2nd bytes in the record readback as ZERO then we've reached our end of data in the EEprom
+  byteBuffer1 = i2c_eeprom_read_byte(EEpromI2Caddr, EEmemoryPointr);    // uint8_t i2c_eeprom_read_byte
+  if((EEmemoryPointr+1) < EEbytesOfStorage){
+    byteBuffer2 = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr+1);
+    }
+  if(byteBuffer1==0 && byteBuffer2==0 && convertDataFlag){ break;}     // this breaks us out of the do-while readback loop
+
 
 if (!convertDataFlag){    // then output raw bytes exactly as read from eeprom [with no timestamp] // this is ONLY used for debugging
         for (uint8_t j = 0; j < bytesPerRecord; j++) {
@@ -2401,8 +2409,6 @@ void ConditionCapacitorOnD8(){            // 2023-06-20: internal pullup resisto
   LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF); // + extra 2msec for osc start! //ADC_ON leaves the already sleeping ACD alone as is
   // NOTE: 15MS is overkill:  5T with 300ohm&105(1uF) is 1.5 msec, with 300Ω&104(100nF) 5RC is only 0.15ms 
   bitClear(DDRB,0);  // pinMode(8,INPUT); 
-  // could insert the timer2 delays here from void Write_i2c_eeprom_array 
-  // to make this dischage faster? but that works in sleep mode IDLE?
 
     //re-enable timers
     power_timer1_disable();    // no longer need Timer1
