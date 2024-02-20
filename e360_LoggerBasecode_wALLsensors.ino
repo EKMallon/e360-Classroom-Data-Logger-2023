@@ -1763,7 +1763,7 @@ for (uint16_t h = 64; h < 165; h++){         // EEPROM.update does not write new
     delay(4);
     }
       
-  Serial.println();Serial.print(F("New Cal constants saved: "));
+  Serial.println();Serial.print(F("New Logger Info saved: "));
   Serial.println(receivedChars);Serial.flush();
   return;
 }// end startMenu_updateLoggerInfo
