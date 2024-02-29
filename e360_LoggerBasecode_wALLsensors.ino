@@ -1,6 +1,5 @@
 // 2-module logger code by Edward Mallon - modified 2023 for the e360 course at Northwestern University
 // https://thecavepearlproject.org/2023/12/01/the-e360-a-classroom-data-logger-for-science/
-
 /*
 This program supports an ongoing series of DIY 'Classroom Logger' tutorials from the Cave Pearl Project. 
 The goal is to provide a starting point for self-built student projects in environmental monitoring.
@@ -363,7 +362,7 @@ do { command = Serial.readStringUntil('\n');                  // read serial mon
 
     // here we are using if statements to check the input instead of the switch / case method used above, goFlagReceived only becomes 'true' with valid input
     if(command == "start"){ 
-      Serial.print(F("Erasing EEprom: Stay on UART power until done"));
+      Serial.println(F("Erasing EEprom: Stay on UART power until done"));
       //------------------------------------------------------------------------------
                 
       for (uint32_t memoryLocation=64; memoryLocation<EEbytesOfStorage; memoryLocation+=16){  // loop writes 16-bytes at a time into the I2C buffer
@@ -445,7 +444,7 @@ Serial.print(F("Initializing sensors: "));Serial.flush();
 
 //take the first reading (just a throw away reading to load the output registers)
   bmp280.startForcedConversion();                             // time needed here depends on oversampling settings
-  LowPower.powerDown(SLEEP_30MS, ADC_ON, BOD_OFF);            // 60MSEC = long enough for max rezolution settings
+  LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF);            // 60MSEC = long enough for max rezolution settings
   bmp280.getCurrentMeasurements(Bmp280_Temp_degC,Bmp280_Pr_mBar,Bmp280_altitude_m);
 
   Serial.print(F("BMP280 started,"));Serial.flush();
@@ -580,7 +579,7 @@ RTC_DS3231_getTime();                     // populates the global variables t_da
         #else
           PINB = B00100000;                 // this toggles ONLY the D13 led // ~50uA to light RED onboard led through D13s internal pullup resistor
         #endif 
-        LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF);   //ADC_ON preserves the existing ADC state - if its already off it stays off
+        LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);   //ADC_ON preserves the existing ADC state - if its already off it stays off
     }while(!rtc_INT0_Flag);                 // sends you back to do{ unless the RTC alarm has triggered
   
   RTC_DS3231_turnOffBothAlarms();           // Note: detachInterrupt(0); already done inside the rtc_d2_alarm_ISR 
@@ -618,7 +617,7 @@ void loop(){
 //  *  *  *  *  Set the next RTC wakeup alarm  *  *  *  *  *  *
 //-------------------------------------------------------------------------------    
   RTC_DS3231_getTime();                     // populates global t_minute,t_second variables
-  LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF); // short sleeps for Cr2032 battery recovery after EVERY I2C exchange
+  LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF); // short sleeps for Cr2032 battery recovery after EVERY I2C exchange
 
 #ifdef PIRtriggersSensorReadings
   currentPIRtriggerTime = RTC_DS3231_unixtime();  // special case where we preload a variable for a delta calculation
@@ -644,10 +643,10 @@ void loop(){
       AlarmSelectBits = 0b00001100;         // A1 Alarm when minutes and seconds match, ignore days, hours
       RTC_DS3231_setA1Time(0, 0, Alarmminute, Alarmsecond, AlarmSelectBits, 0, 0, 0);
     }
-    LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF);  // RTC memory register WRITING time & battery recovery time
+    LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF);  // RTC memory register WRITING time & battery recovery time
     
     RTC_DS3231_turnOnAlarm(1);
-    LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF);  // RTC memory register WRITING time & battery recovery time
+    LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF);  // RTC memory register WRITING time & battery recovery time
 
 #endif //terminates #ifdef PIRtriggersSensorReadings    
  
@@ -672,13 +671,13 @@ void loop(){
   // if you are only logging LowestBattery, it might be useful to record the unloaded battery voltage once per day (?)
   //if(t_hour==0 && t_minute==0 && t_second==0){          // midnight reset prevents 'occasional' low readings from permanently resetting the lobat record
   //  LowestBattery = readBattery();                      // no-load readBattery() calls are usually 20-100mv higher than Lobat reads during high drain EEsave events
-  //  LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF);
+  //  LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);
   //  }
   
 #ifdef logRTC_Temperature
 //------------------------------------------------------------------------------
   rtc_TEMP_degC = RTC_DS3231_getTemp();               // moved this code into its own function
-  LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF);    // battery recovery pause after every I2C exchange
+  LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF);    // battery recovery pause after every I2C exchange
       if(ECHO_TO_SERIAL){
         Serial.print(F(", RTC temp[°C]: "));Serial.print(rtc_TEMP_degC,2);Serial.flush();
       } 
@@ -718,11 +717,11 @@ void loop(){
 //-------------------
   bh1750.start(BH1750_QUALITY_LOW, BH1750_MTREG_LOW);   // triggers a new sensor reading
                                                         // LOW MTreg:31  resolution lux:7.4, 121557 is highest lux
-  LowPower.powerDown(SLEEP_30MS, ADC_ON, BOD_OFF);      // L-Resolution Mode Measurement Time 16-24 msec                   
+  LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF);      // L-Resolution Mode Measurement Time 16-24 msec                   
   //LowPower.powerDown(SLEEP_30MS, ADC_ON, BOD_OFF);    // H-Resolution Mode Measurement Time is much longer: 120-180 ms
 
   lux_BH1750_RawInt =bh1750.getRaw();                   // reading can reach 120,000
-  LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF);      // battery recovery after I2C - not really needed with this low current sensor
+  LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF);      // battery recovery after I2C - not really needed with this low current sensor
     
   if(ECHO_TO_SERIAL){  
       Serial.print(F(", Bh1750(raw): "));Serial.print(lux_BH1750_RawInt);
@@ -735,24 +734,24 @@ void loop(){
 //-------------------
 #if defined(recordBMPtemp) || defined(recordBMPpressure) || defined(recordBMPaltitude) //  '||' means 'OR'
   bmp280.startForcedConversion(); 
-  LowPower.powerDown(SLEEP_30MS, ADC_ON, BOD_OFF); //NOTE: sleep time needed here depends on your oversampling settings
+  LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF); //NOTE: sleep time needed here depends on your oversampling settings
 #endif
 
 #ifdef recordBMPtemp
   bmp280.getCurrentTemperature(Bmp280_Temp_degC);
-  LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF);
+  LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);
   if(ECHO_TO_SERIAL){ Serial.print(F(" b280 Temp: ")); Serial.print(Bmp280_Temp_degC,2); Serial.print(F(" °C, ")); }
 #endif
 
 #ifdef recordBMPpressure
   bmp280.getCurrentPressure(Bmp280_Pr_mBar);
-  LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF);
+  LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF);
   if(ECHO_TO_SERIAL){ Serial.print(F(" b280 Pr. "));Serial.print(Bmp280_Pr_mBar,2); Serial.print(F(" hPa, ")); }
 #endif
 
 #ifdef recordBMPaltitude
   bmp280.getCurrentAltitude(Bmp280_altitude_m);
-  LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF);
+  LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF);
     if(ECHO_TO_SERIAL){ Serial.print(F(" b280 Alt. ")); Serial.print(Bmp280_altitude_m,2); Serial.print(F(" m,")); }
 #endif
 // to read all three at the same time: bmp280.getCurrentMeasurements(Bmp280_Temp_degC, Bmp280_Pr_mBar, Bmp280_altitude_m); //function returns 1 if readings OK
@@ -763,7 +762,7 @@ void loop(){
         if(ECHO_TO_SERIAL){ 
           Serial.print(F(", SI7051 temp: "));Serial.print(((175.26*TEMP_si7051)/65536.0)-46.85 ,3);Serial.flush();//print 3 decimals
           }
-    LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF);  //  battery recovery time
+    LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);  //  battery recovery time
 #endif
 
 //----------------------------------------------------------------------------------------
@@ -777,8 +776,18 @@ void loop(){
       pinMode(13,INPUT_PULLUP);
     #endif
     
-      LowPower.powerDown(SLEEP_60MS, ADC_ON, BOD_OFF);
-      
+      LowPower.powerDown(SLEEP_60MS, ADC_OFF, BOD_OFF);
+
+    //---------------------------------------------------------------------------------
+    // Setup ADC to read the coincell voltage DURING the EEprom data save:
+    //---------------------------------------------------------------------------------
+    power_adc_enable();
+    ADMUX = set_ADMUX_2readRailVoltage; ADCSRA = set_ADCSRA_2readRailVoltage;   //configure the 2 ADC control registers ADMUX & ADCSRA by loading the byte pattern from variables
+    bitWrite(ADCSRA,ADPS2,1);bitWrite(ADCSRA,ADPS1,1);bitWrite(ADCSRA,ADPS0,1); //ADC speed: 128 prescalar =67 kHz, this is slower than normal! ~208uS /ADC readings 
+    bitSet(ADCSRA,ADSC);                            // triggers a 1st throw-away ADC reading to engauge the Aref capacitor //1st read takes 20 ADC clock cycles instead of usual 13  
+    LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF);
+    // NOTE: Aref capacitor Rise time can take 5-10 milliseconds after starting ADC so 15ms of ADC_ON powerDown sleep works // this could be done before the LED pip?
+  
     #ifdef LED_r9_b10_g11_gnd12           // Colors can be combined for the LED pip!
     pinMode(10,INPUT);                    // D10 [blue] LED pullup Off 
     pinMode(11,INPUT);                    // D11 [Green] LED pullup Off
@@ -811,17 +820,6 @@ void loop(){
   // estimate about 100us per byte at 100khz bus = 0.7milliseconds for 3(adr)+4(payload) bytes
 //---------------------------------------------------------------------------------
 
-//---------------------------------------------------------------------------------
-// FIRST Setup ADC to read the coincell voltage DURING the EEprom data save:
-//---------------------------------------------------------------------------------
-  power_adc_enable();
-    ADMUX = set_ADMUX_2readRailVoltage; ADCSRA = set_ADCSRA_2readRailVoltage;   //configure the 2 ADC control registers ADMUX & ADCSRA by loading the byte pattern from variables
-    bitWrite(ADCSRA,ADPS2,1);bitWrite(ADCSRA,ADPS1,1);bitWrite(ADCSRA,ADPS0,1); //ADC speed: 128 prescalar =67 kHz, this is slower than normal! ~208uS /ADC readings 
-    bitSet(ADCSRA,ADSC);                            // triggers a 1st throw-away ADC reading to engauge the Aref capacitor //1st read takes 20 ADC clock cycles instead of usual 13  
-    LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF);
-  // NOTE: Aref capacitor Rise time can take 5-10 milliseconds after starting ADC so 15ms of ADC_ON powerDown sleep works // this could be done before the LED pip?
-  // also provides some battery recovery time before data is saved to EEprom
-  
 //---------------------------------------------------------------------------------
   Wire.beginTransmission(EEpromI2Caddr);            // STARTS filling the I2C transmission buffer with the eeprom I2C bus address
   Wire.write(highByte(EEmemoryPointr));             // send the HighByte of the EEprom memory location we want to write to
@@ -974,9 +972,9 @@ void loop(){
     // default 4k & 32k eeproms can just put the logger straight to sleep during the EEprom data-save
     // but Larger eeproms sometimes need the I2C bus left on until the save completes
     if(EEbytesOfStorage == 4096 || EEbytesOfStorage == 32768 ){
-        LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF); // NOTE .powerDown ONLY works with the AT24c32(4K) EEproms
+        LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF); // NOTE .powerDown ONLY works with the AT24c32(4K) EEproms
     }else{                                              // with larger eeproms you may need to keep the bus clock running -> but .idle FREEZES the 4k eeproms!
-        LowPower.idle(SLEEP_15MS, ADC_ON, TIMER2_OFF, TIMER1_OFF, TIMER0_ON, SPI_OFF, USART0_OFF, TWI_ON);  // NOTE _ON just leaves the peripheral in its existing state - if its already off it stays off
+        LowPower.idle(SLEEP_15MS, ADC_OFF, TIMER2_OFF, TIMER1_OFF, TIMER0_ON, SPI_OFF, USART0_OFF, TWI_ON);  // NOTE _ON just leaves the peripheral in its existing state - if its already off it stays off
     }
   
   LowestBattery = InternalReferenceConstant / uint16_Buffer;   
@@ -1028,18 +1026,18 @@ void loop(){
   //oled.clearField(32,4,10);
   oled.setCursor(32,4); //oled.setCursor(Column, Row) -row is from the upper left corner
   oled.print(F("RTC    temp")); //5x7 system font can display 10 characters accross the screen
-  LowPower.powerDown(SLEEP_120MS, ADC_ON, BOD_ON); //battery recovery after each oled.print statement
+  LowPower.powerDown(SLEEP_120MS, ADC_OFF, BOD_ON); //battery recovery after each oled.print statement
   oled.setCursor(32,5); //64x32 screen displays only the CENTER pixels of the 128x64 pixel wide memory!
   // so first collumn/ pixel on micro oled screen from LEFT is at 32 across
   // when using the 128x64 driver the first row starts at (32,4), and entire screen occupies 8pixel heigh rows 4-5-6-7
   oled.print(F("----------")); //5x7 system font can display 10 characters accross the screen
-  LowPower.powerDown(SLEEP_120MS, ADC_ON, BOD_ON);
+  LowPower.powerDown(SLEEP_120MS, ADC_OFF, BOD_ON);
   oled.set2X();  //2x  5x7 system font can display 5 characters accross the screen
   //oled.clearField(32,6,6);
   oled.setCursor(32,6); //set2X can only start at rows 4 or 5 or 6 (because they take two horizontal rows to display)
   oled.print(rtc_TEMP_degC,2);
   oled.print(F(" ")); //blank spaces to clearing the rest of the row
-  LowPower.powerDown(SLEEP_120MS, ADC_ON, BOD_ON);
+  LowPower.powerDown(SLEEP_120MS, ADC_OFF, BOD_ON);
   #endif
 
   #ifdef BMP280_Address
@@ -1052,7 +1050,7 @@ void loop(){
   oled.set2X();  //2x  5x7 system font can display 5 characters accross the screen
   oled.setCursor(32,6); //set2X can only start at rows 4 or 5 or 6 (because they take two horizontal rows to display)
   oled.print(bmp280_pressure,1);
-  LowPower.powerDown(SLEEP_8S, ADC_ON, BOD_OFF); //the ProMini does not need to stay awake for the screen display time
+  LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF); //the ProMini does not need to stay awake for the screen display time
   oled.clear();oled.set1X(); oled.setCursor(32,4); oled.print(F("Temp   Cel"));
   oled.setCursor(32,5);oled.print(F("----------")); //5x7 font =10 characters accross the screen
   oled.set2X();oled.setCursor(32,6);oled.print(bmp280_temp,2);
@@ -1092,7 +1090,7 @@ void loop(){
   uint16_Buffer = InternalReferenceConstant / uint16_Buffer; // convert average ADC reading into railvoltage
   if (uint16_Buffer < LowestBattery) {LowestBattery = uint16_Buffer;}
    
-  LowPower.powerDown(SLEEP_8S, ADC_ON, BOD_OFF);
+  LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);
   oled.ssd1306WriteCmd(SSD1306_DISPLAYOFF); // To switch display OFF
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++  
@@ -1200,7 +1198,7 @@ void sleepNwait4D3InterruptORrtcAlarm(){
         #ifdef LED_r9_b10_g11_gnd12 
         digitalWrite(10,HIGH); pinMode(10,OUTPUT);          // or pinMode(10,INPUT_PULLUP); // BLUE 
         #endif
-        LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF);    // time to view LED pip
+        LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);    // time to view LED pip
         pinMode(10,INPUT);                                  // D10 [blue] LED pullup OFF
        
     } else { // If d3_INT1_Flag is still false then we woke from the RTC alarm - not the PIR, so Int1 still needs detached
@@ -2033,7 +2031,7 @@ uint16_t readBattery(){                                 // reads 1.1vref as inpu
   bitWrite(ADCSRA,ADPS2,1);bitWrite(ADCSRA,ADPS1,1);bitWrite(ADCSRA,ADPS0,0); // 64 prescalar @ 8MHz/64 sets(default)125 kHz ADC clock 
                                                         // typical ADC read takes 13 ADC clock cycles, so default speed is about 9615 Hz (or 0.104 milliseconds per reading).
   bitSet(ADCSRA,ADSC); while(bit_is_set(ADCSRA,ADSC));  // triggers a 1st THROW AWAY READING to engage AREF capacitor
-  LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF);      // leaves ADC_ON: ~110µA so aref cap charges up during this sleep
+  LowPower.powerDown(SLEEP_30MS, ADC_ON, BOD_OFF);      // leaves ADC_ON: ~110µA so aref cap charges up during this sleep
     
   uint16_Buffer=0; adc_interrupt_counter = 0;           // reset our accumulator variables
   bitSet(ACSR,ADIF);                                    // clears any previous ADC interrupt flags
@@ -2088,7 +2086,7 @@ if(ECHO_TO_SERIAL){
   pinMode(13, OUTPUT);                              // the built-in red led on the Arduino is on D13
   for (byte CNTR = 0; CNTR < 253; CNTR++) {         // FLASH red indicator LED to indicate error state
     PINB = B00100000;                               // writing a bit to the pin register TOGGLES D13 LED pullup resistor On/Off
-    LowPower.powerDown(SLEEP_250MS, ADC_ON, BOD_OFF);
+    LowPower.powerDown(SLEEP_250MS, ADC_OFF, BOD_OFF);
   }
   
   bitSet(ACSR,ACD);                                 // Disable the analog comparator by setting the ACD bit (bit 7) of the ACSR register to one.
@@ -2111,7 +2109,7 @@ if(ECHO_TO_SERIAL){
   pinMode(A4, INPUT);  digitalWrite(A4, LOW);
   pinMode(A5, INPUT);  digitalWrite(A5, LOW);     //Note: A4 & A5 are still connected to I2C pullups on RTC module
   
-  LowPower.powerDown(SLEEP_FOREVER,ADC_ON,BOD_OFF);  //ADC_ON is a bit confusing here - what it really means is 'leave the existing ADC state alone', and we have already disabled it with power_all_disable();
+  LowPower.powerDown(SLEEP_FOREVER,ADC_OFF,BOD_OFF);  //ADC_ON is a bit confusing here - what it really means is 'leave the existing ADC state alone', and we have already disabled it with power_all_disable();
 }
 
 //==========================================================================================
@@ -2129,7 +2127,7 @@ float RTC_DS3231_getTemp(){             // from http://forum.arduino.cc/index.ph
   Wire.beginTransmission(DS3231_ADDRESS);
   Wire.write(DS3231_TMP_UP_REG);        // set the memory pointer inside the RTC to first temp register
   Wire.endTransmission();
-  LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF); // coincell battery recovery
+  LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF); // coincell battery recovery
   
   Wire.requestFrom(DS3231_ADDRESS, 2);  // request the two temperature register bytes
   if (Wire.available()) {
@@ -2145,7 +2143,7 @@ void RTC_DS3231_getTime(){
   Wire.beginTransmission(DS3231_ADDRESS);
   Wire.write(0);
   Wire.endTransmission();
-  LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF); // coincell battery recovery
+  LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF); // coincell battery recovery
   
   Wire.requestFrom(DS3231_ADDRESS, 7);
   t_second = rtc_bcd2bin(Wire.read() & 0x7F);
@@ -2406,7 +2404,7 @@ void ConditionCapacitorOnD8(){            // 2023-06-20: internal pullup resisto
   
   // sampling cap is now at its 66% of Vcc HIGH trigger point -> now discharge the cap through 300Ω on D8
   bitClear(PORTB,0);  // digitalWrite(8,LOW); 
-  LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF); // + extra 2msec for osc start! //ADC_ON leaves the already sleeping ACD alone as is
+  LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF); // + extra 2msec for osc start! //ADC_ON leaves the already sleeping ACD alone as is
   // NOTE: 15MS is overkill:  5T with 300ohm&105(1uF) is 1.5 msec, with 300Ω&104(100nF) 5RC is only 0.15ms 
   bitClear(DDRB,0);  // pinMode(8,INPUT); 
 
@@ -2450,7 +2448,7 @@ uint16_t ReadD6riseTimeOnD8(){            //2023-06-20: internal pullup resistor
   
     bitClear(DDRD,6); bitClear(PORTD,6); // D6 INPUT & LOW -> stops the capacitor charge
     bitSet(DDRB,0); //bitClear(PORTB,0); //D8 OUTPUT & (already) LOW to discharge the capacitor through 300Ω on D8
-      LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF); // sleep processor during the discharge
+      LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF); // sleep processor during the discharge
     bitClear(DDRB,0);                 // D8 INPUT 
     
 //re-enable timers after Dpin read:
@@ -2495,7 +2493,7 @@ uint16_t ReadD7riseTimeOnD8(){
   
     bitClear(DDRD,7);bitClear(PORTD,7);   //  D7 to INPUT & LOW //stops capacitor charging
     bitSet(DDRB,0);bitClear(PORTB,0);     //  D8 OUTPUT LOW // discharge the cap through D8
-    LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF);
+    LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);
     bitClear(DDRB,0);                     //  D8 INPUT 
 
 //re-enable timers after Dpin read:
@@ -2545,7 +2543,7 @@ uint16_t ReadD8riseTimeOnD8(){
   interrupts(); // NOTE:  sleep_disable() happens in ISR (TIMER1_CAPT_vect)
 
   bitClear(PORTB,0);bitSet(DDRB,0); // D8 LOW & OUTPUT // discharges the capacitor through D8
-  LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF); 
+  LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF); 
   bitClear(DDRB,0);                     //  D8 INPUT 
 
   //re-enable timers after Dpin read:
