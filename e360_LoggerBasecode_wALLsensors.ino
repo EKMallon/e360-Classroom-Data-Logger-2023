@@ -2091,7 +2091,6 @@ if(ECHO_TO_SERIAL){
   
   bitSet(ACSR,ACD);                                 // Disable the analog comparator by setting the ACD bit (bit 7) of the ACSR register to one.
   ADCSRA = 0; SPCR = 0;                             // Disable ADC & SPI // only use PRR after disabling the peripheral clocks, otherwise the ADC is "frozen" in an active state drawing power
-  power_all_disable();                              // Turn ALL the internal peripherals off - must come after disabling ADC
 
  // FLOAT digital pins so no current can leak after shutdown:
     for (int i = 2; i <=13; i++) { 
