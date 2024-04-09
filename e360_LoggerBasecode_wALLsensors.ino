@@ -46,7 +46,7 @@ These 'powers of 2' fit in the I2C buffer AND divide evenly into the EEproms har
 //#define OLED_64x32_SSD1306      // not a sensor, but enabled with define to include needed library - requires 1000uF rail capacitor!-
 
 #define EEpromI2Caddr 0x57                  // Run a bus scanner to check where your eeproms are https://github.com/RobTillaart/MultiSpeedI2CScanner
-#define EEbytesOfStorage 4096               // Default: 0x57 / 4096 bytes for 4k on RTC module // 32k I2C EEprom Module: set to 0x50 & 32768   // note EEmemoryPointr would have to got be uint32_t for 64k eeproms
+#define EEbytesOfStorage 4096               // Default: 0x57 / 4096 bytes for 4k on RTC module // 32k I2C EEprom Module: set to 0x50 & 32768   // note EEmemoryPointr would have to be uint32_t for 64k eeproms
 
 #define LED_r9_b10_g11_gnd12 installed      // enables code for RGB indicator LED //1k limit resistor on shared GND line! // Red LED on D13 gets used as indicator if this #define is commented out
 
@@ -739,7 +739,7 @@ void loop(){
 
 #ifdef recordBMPtemp
   bmp280.getCurrentTemperature(Bmp280_Temp_degC);
-  LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);
+  LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF);
   if(ECHO_TO_SERIAL){ Serial.print(F(" b280 Temp: ")); Serial.print(Bmp280_Temp_degC,2); Serial.print(F(" °C, ")); }
 #endif
 
@@ -762,7 +762,7 @@ void loop(){
         if(ECHO_TO_SERIAL){ 
           Serial.print(F(", SI7051 temp: "));Serial.print(((175.26*TEMP_si7051)/65536.0)-46.85 ,3);Serial.flush();//print 3 decimals
           }
-    LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);  //  battery recovery time
+    LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF);  //  battery recovery time
 #endif
 
 //----------------------------------------------------------------------------------------
@@ -776,18 +776,22 @@ void loop(){
       pinMode(13,INPUT_PULLUP);
     #endif
     
-      LowPower.powerDown(SLEEP_60MS, ADC_OFF, BOD_OFF);
+      LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF);
+      
+//---------------------------------------------------------------------------------
+// Setup ADC to read the coincell voltage DURING the EEprom data save:
+//---------------------------------------------------------------------------------
+    bitSet(ACSR,ACD); //disable analog comparator ~51µA.
+    SPCR = 0; ADCSRA =0; power_all_disable(); power_adc_enable();
+    ADMUX = set_ADMUX_2readRailVoltage; ADCSRA = set_ADCSRA_2readRailVoltage;     // configure the 2 ADC control registers ADMUX & ADCSRA by loading the byte pattern from variables
+    bitWrite(ADCSRA,ADPS2,1);bitWrite(ADCSRA,ADPS1,1);bitWrite(ADCSRA,ADPS0,1);   // ADC speed: 128 prescalar =62.5khz, this is SLOWER than normal! ~208uS /ADC readings 
+    bitSet(ADCSRA,ADSC);    //while(bit_is_set(ADCSRA,ADSC));                     // triggers a 1st throw-away ADC reading to engauge the Aref capacitor //1st read takes 20 ADC clock cycles instead of usual 13  
+    LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF); 
+  // NOTE: Aref capacitor Rise time can take 5-10 milliseconds after starting ADC so 15ms of ADC_ON powerDown sleep works 
 
-    //---------------------------------------------------------------------------------
-    // Setup ADC to read the coincell voltage DURING the EEprom data save:
-    //---------------------------------------------------------------------------------
-    power_adc_enable();
-    ADMUX = set_ADMUX_2readRailVoltage; ADCSRA = set_ADCSRA_2readRailVoltage;   //configure the 2 ADC control registers ADMUX & ADCSRA by loading the byte pattern from variables
-    bitWrite(ADCSRA,ADPS2,1);bitWrite(ADCSRA,ADPS1,1);bitWrite(ADCSRA,ADPS0,1); //ADC speed: 128 prescalar =67 kHz, this is slower than normal! ~208uS /ADC readings 
-    bitSet(ADCSRA,ADSC);                            // triggers a 1st throw-away ADC reading to engauge the Aref capacitor //1st read takes 20 ADC clock cycles instead of usual 13  
-    LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF);
-    // NOTE: Aref capacitor Rise time can take 5-10 milliseconds after starting ADC so 15ms of ADC_ON powerDown sleep works // this could be done before the LED pip?
-  
+//---------------------------
+// turn off the HEARTBEAT pip
+//---------------------------
     #ifdef LED_r9_b10_g11_gnd12           // Colors can be combined for the LED pip!
     pinMode(10,INPUT);                    // D10 [blue] LED pullup Off 
     pinMode(11,INPUT);                    // D11 [Green] LED pullup Off
@@ -821,6 +825,7 @@ void loop(){
 //---------------------------------------------------------------------------------
 
 //---------------------------------------------------------------------------------
+  power_twi_enable();
   Wire.beginTransmission(EEpromI2Caddr);            // STARTS filling the I2C transmission buffer with the eeprom I2C bus address
   Wire.write(highByte(EEmemoryPointr));             // send the HighByte of the EEprom memory location we want to write to
   Wire.write(lowByte(EEmemoryPointr));              // send the LowByte of the EEprom memory location   // Note: we add  'bytes per record' to EEmemoryPointr at the end of the main loop  
@@ -959,26 +964,51 @@ void loop(){
 //-------------------------------------------------------------------------------
     Wire.endTransmission(); // ONLY AT THIS POINT do the bytes accumulated in the buffer actually get sent
 //-------------------------------------------------------------------------------
-// Then the EEPROM enters an internally-timed write cycle to memory which takes ~3-10ms
+// The EEPROM enters an internally-timed write cycle to memory which takes ~3-10ms [longer for larger eeproms because of page size]
 // 4k AT24c32 write draws ~10mA for about 10ms @3mA, but newer eeproms can take only only 5ms @3mA
 // the coincell battery experiences a SIGNIFICANT VOLTAGE DROP due to its internal resistance during this load
-// so we read the battery voltage during this load event for a true Li battery reading
+// we loop through slow ADC readings in sleep mode IDLE (which leaves I2C and ADC running) to catch the lowest battery point
 //-------------------------------------------------------------------------------
 
-    bitSet(ADCSRA,ADSC); while(bit_is_set(ADCSRA,ADSC));  // this is another throw away ADC reading to provide 200microseconds for the coincell volatage drop
-    bitSet(ADCSRA,ADSC); while(bit_is_set(ADCSRA,ADSC));  uint16_Buffer=ADC; //ADC is a macro command that combines the ADC's two output memory registers into one integer
-    ADMUX = default_ADMUX; ADCSRA = 0; power_adc_disable(); // restore defaults & turn off the ADC
-
-    // default 4k & 32k eeproms can just put the logger straight to sleep during the EEprom data-save
-    // but Larger eeproms sometimes need the I2C bus left on until the save completes
-    if(EEbytesOfStorage == 4096 || EEbytesOfStorage == 32768 ){
-        LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF); // NOTE .powerDown ONLY works with the AT24c32(4K) EEproms
-    }else{                                              // with larger eeproms you may need to keep the bus clock running -> but .idle FREEZES the 4k eeproms!
-        LowPower.idle(SLEEP_15MS, ADC_OFF, TIMER2_OFF, TIMER1_OFF, TIMER0_ON, SPI_OFF, USART0_OFF, TWI_ON);  // NOTE _ON just leaves the peripheral in its existing state - if its already off it stays off
-    }
+  bitSet(ADCSRA,ADIE);                                  // tells ADC to generate processor interrupts to wake the processor when a new ADC reading is ready
+  bitSet(ACSR,ADIF);                                    // clears any previous ADC interrupt flags
+  set_sleep_mode( SLEEP_MODE_IDLE );                    // IDLE leaves the I2C bus running
+  bitSet(ADCSRA,ADSC);                                  // trigger 1st throw-away ADC read
+    do{ sleep_mode();                                   // sleep_mode macro combines sleep sleep_enable() & sleep_disable() w sleep_cpu() command
+       }while (bit_is_set(ADCSRA,ADSC));
+  uint16_Buffer=1;
   
-  LowestBattery = InternalReferenceConstant / uint16_Buffer;   
+   do{   
+      for (uint8_t ADCreadsPerPoll = 0; ADCreadsPerPoll<10; ADCreadsPerPoll++) {  // 10x 200uS/read at 128 prescalar only polls the EEprom every 2 msec - EEprom save takes up to 10milliseconds
+          bitSet(ADCSRA,ADSC);                          // start new ADC reading  // at 128 prescalar ~208uS /ADC readings 
+            do{ sleep_mode();                           // sleep_mode macro combines sleep enable & disable with sleep_cpu command = sleep_disable(); not needed with sleep_mode();         
+            }while (bit_is_set(ADCSRA,ADSC));           // bit stays 1 while ADC is reading, ADC sets ADSC bit to zero ONLY when conversion is finished
+        if(ADC>uint16_Buffer){uint16_Buffer=ADC;}       // updates uint16_Buffer only when new ADC is HIGHER because relationship between ADCread & rail voltage in INVERTED with our 1.1vref method
+        }// terminates for (uint8_t ADCreadsPerPoll
+        
+        Wire.beginTransmission(EEpromI2Caddr);          // Poll the EEprom to see if it has finished the data save
+        byteBuffer1 = Wire.endTransmission();           // returns 0 ONLY when EEprom is READY for more data 
+          
+      }while (byteBuffer1 != 0x00);
+              
+  bitClear(ADCSRA,ADIE);bitSet(ACSR,ADIF);              // turn off the ADC interrupts & clears any ADC interrupt flags
+  ADMUX = default_ADMUX;                                // restore defaults
+  ADCSRA = 0; power_adc_disable();                      // turn off ADC
+  
+  bitClear(DDRB,5);bitSet(PORTB,5);                     // pip the red D13 LED w INPUT_PULLUP to indicate EEprom memory save(optional)
+  LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF);     // Cr2032 Battery recovery time: & larger eeproms seem to need some recovery time or RTC alarm wont set
+  bitClear(PORTB,5);                                    // D13 red LED: pullup OFF
+  
+  uint16_Buffer=uint16_Buffer+1;                        // on the oscilloscope the EEpolling briefly pulled the concell voltage down another 10-15 mvolts
+                                                        // this was probably not captured during the ADC readings which typicaly see 30-40mv drop during EEsave so bumping the ADC reading by one
+  CurrentBattery = InternalReferenceConstant / uint16_Buffer;
+  if(t_hour==0 && t_minute==0 && t_second==0){  LowestBattery = 5764; }  // midnight reset to high value prevents 'occasional' low battery readings from permanently affecting the record                              
+  if(CurrentBattery < LowestBattery){ LowestBattery = CurrentBattery;} 
+  LowestBattery = InternalReferenceConstant / uint16_Buffer;
+  
+  power_timer0_enable();                                // Timer0 is needed for millis, delays   
   if(ECHO_TO_SERIAL){
+      power_usart0_enable();
       Serial.print(F(", Lowest Bat[mV]: "));Serial.println(LowestBattery);Serial.flush();
       } 
 
@@ -1143,8 +1173,7 @@ void loop(){
 //==========================================================================================
 void sleepNwait4RTCalarm() {                          //NOTE all existing pin states are preserved during sleep
 
-  pinMode(2,INPUT);                                  //D2 pullup off - not needed with hardware pullups on RTC module
-  
+  pinMode(2,INPUT);                                   //D2 pullup off - not needed with hardware pullups on RTC module
   noInterrupts();
   bitSet(EIFR,INTF0);                                 // clears interrupt 0's flag bit before attachInterrupt(0,isr,xxxx)
   attachInterrupt(0,rtc_d2_alarm_ISR,LOW);            //RTC alarm connected to pin D2 // LOW assures it will always respond if the RTC alarm is asserted
@@ -1155,10 +1184,10 @@ void sleepNwait4RTCalarm() {                          //NOTE all existing pin st
     
   Wire.beginTransmission(DS3231_ADDRESS);
   Wire.write(DS3231_STATUS_REG);
-  Wire.write(0);                                     // clearing the entire status register turns Off (both) RTC alarms though technically only the last two bits need to be set
+  Wire.write(0);                                      // clearing the entire status register turns Off (both) RTC alarms though technically only the last two bits need to be set
   Wire.endTransmission();
-  rtc_INT0_Flag = false;                             // clear the flag we use to indicate the RTC alarm occurred
-  LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);   // coincell voltage recovery time from Wakup & I2C transaction
+  rtc_INT0_Flag = false;                              // clear the flag we use to indicate the RTC alarm occurred
+  LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF);   // coincell voltage recovery time from Wakup & I2C transaction
   
 }  //terminator for sleepNwait4RTCalarm
 
@@ -1210,7 +1239,7 @@ void sleepNwait4D3InterruptORrtcAlarm(){
       Wire.write(DS3231_STATUS_REG);
       Wire.write(0);      // turns Off (both) RTC alarms
       Wire.endTransmission();
-      LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);   // coincell recovery time after I2C transaction
+      LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF);   // coincell recovery time after I2C transaction
                           // NOTE: do not set rtc_INT0_Flag = false; here! //must wait till AFTER we break out of counting while loop
                           // because: while (rtc_INT0_Flag == false) { is the "sub-loop" that acts as the PIR event counter
 
@@ -2072,44 +2101,48 @@ ISR (ADC_vect){ adc_interrupt_counter++;}  // called by the readBattery() FUNCTI
 // ======================================================================================
 void error_shutdown() {
 
-if(ECHO_TO_SERIAL){
-   Serial.print(F("Shutting Down: LowBattery @")); Serial.println(LowestBattery); Serial.flush();
-}
-  
-  power_twi_enable();
-  RTC_DS3231_turnOffBothAlarms(); //before we disable I2C
-  noInterrupts ();
-  bitSet(EIFR,INTF0);                               // clear flag for interrupt 0  see: https://gammon.com.au/interrupts
-  bitSet(EIFR,INTF1);                               // clear flag for interrupt 1
-  interrupts (); 
+  if(!bitRead(PRR,PRUSART0)){  // if the USART peripheral IS TURNED ON = the bit is a zero,  so use ! to invert
+    Serial.println(F(" - logger shut-down in 15 seconds - ")); Serial.flush(); // see datasheet 9.11.3 PRR – Power Reduction Register
+    }
 
-  pinMode(13, OUTPUT);                              // the built-in red led on the Arduino is on D13
-  for (byte CNTR = 0; CNTR < 253; CNTR++) {         // FLASH red indicator LED to indicate error state
-    PINB = B00100000;                               // writing a bit to the pin register TOGGLES D13 LED pullup resistor On/Off
-    LowPower.powerDown(SLEEP_250MS, ADC_OFF, BOD_OFF);
+  pinMode(13, INPUT);                               // the built-in red led on the Arduino is on D13
+   for (uint8_t CNTR = 0; CNTR < 64; CNTR++) {      // FLASH red indicator LED to indicate error state
+     PINB = B00100000;                              // writing a bit to the pin register TOGGLES D13 LED pullup resistor On/Off
+     LowPower.powerDown(SLEEP_250MS, ADC_OFF, BOD_OFF);
+   }
+  digitalWrite(13, LOW);
+
+  if(bitRead(PRR,PRTWI)){      // if the I2C peripheral is TURNED OFF = the bit is a 1 // Writing a logic one to this bit shuts down the TWI by stopping the clock to the module.
+    power_twi_enable();        // if the I2C off then must turn on to disable sensors & RTC before shutdown
   }
   
-  bitSet(ACSR,ACD);                                 // Disable the analog comparator by setting the ACD bit (bit 7) of the ACSR register to one.
-  ADCSRA = 0; SPCR = 0;                             // Disable ADC & SPI // only use PRR after disabling the peripheral clocks, otherwise the ADC is "frozen" in an active state drawing power
+  // SLEEP ANY CONNECTED SENSORS before you disable I2C
 
- // FLOAT digital pins so no current can leak after shutdown:
-    for (int i = 2; i <=13; i++) { 
-    pinMode(i, INPUT);  digitalWrite(i, LOW);  
-    }
- if(!ECHO_TO_SERIAL){
-    pinMode(0, INPUT);  digitalWrite(0, LOW);     // d1&0 set as inputs/low
-    pinMode(1, INPUT);  digitalWrite(1, LOW);     // don't change USART pins in ECHO_TO_SERIAL debug mode
-  }// #endif
-
-  pinMode(A0, INPUT);  digitalWrite(A0, LOW);
-  pinMode(A1, INPUT);  digitalWrite(A1, LOW);
-  pinMode(A2, INPUT);  digitalWrite(A2, LOW);
-  pinMode(A3, INPUT);  digitalWrite(A3, LOW);
-  pinMode(A4, INPUT);  digitalWrite(A4, LOW);
-  pinMode(A5, INPUT);  digitalWrite(A5, LOW);     //Note: A4 & A5 are still connected to I2C pullups on RTC module
+  //shut down RTC alarms & oscilator (if battery is dead)
+    Wire.beginTransmission(DS3231_ADDRESS);
+    Wire.write(DS3231_STATUS_REG);
+    Wire.write(0);    // clearing the entire status register turns Off (both) RTC alarms though technically only the last two bits need to be set
+    Wire.endTransmission();
+    noInterrupts ();
+    bitSet(EIFR,INTF0);                               // clear flag for interrupt 0  see: https://gammon.com.au/interrupts
+    bitSet(EIFR,INTF1);                               // clear flag for interrupt 1
+    interrupts (); 
   
-  LowPower.powerDown(SLEEP_FOREVER,ADC_OFF,BOD_OFF);  //ADC_ON is a bit confusing here - what it really means is 'leave the existing ADC state alone', and we have already disabled it with power_all_disable();
-}
+   bitSet(ACSR,ACD);                                 // Disable the analog comparator by setting the ACD bit (bit 7) of the ACSR register to one.
+   ADCSRA = 0; SPCR = 0;                             // 0 Disables ADC & SPI // only use PRR after disabling the peripheral clocks, otherwise the ADC gets "frozen" in an active state drawing power
+   if(!bitRead(PRR,PRUSART0)){                       // if serial connection is ON, turn it off
+      power_usart0_disable();
+      }   
+  
+  // FLOAT all pins so no current can leak after shutdown:
+  for (uint8_t i = 0; i <=13; i++) { 
+        pinMode(i,INPUT);
+        }
+  pinMode(A0,INPUT);pinMode(A1,INPUT);pinMode(A2,INPUT);pinMode(A3,INPUT);
+  pinMode(A4,INPUT); pinMode(A5,INPUT);              //Note: A4 & A5 are still connected to 4k7 pullup resistors on RTC module
+
+  LowPower.powerDown(SLEEP_FOREVER,ADC_OFF,BOD_OFF);
+  } //end  void error_shutdown()
 
 //==========================================================================================
 //==========================================================================================
@@ -2126,7 +2159,7 @@ float RTC_DS3231_getTemp(){             // from http://forum.arduino.cc/index.ph
   Wire.beginTransmission(DS3231_ADDRESS);
   Wire.write(DS3231_TMP_UP_REG);        // set the memory pointer inside the RTC to first temp register
   Wire.endTransmission();
-  LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF); // coincell battery recovery
+  LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF); // coincell battery recovery
   
   Wire.requestFrom(DS3231_ADDRESS, 2);  // request the two temperature register bytes
   if (Wire.available()) {
@@ -2142,7 +2175,7 @@ void RTC_DS3231_getTime(){
   Wire.beginTransmission(DS3231_ADDRESS);
   Wire.write(0);
   Wire.endTransmission();
-  LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF); // coincell battery recovery
+  LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF); // coincell battery recovery
   
   Wire.requestFrom(DS3231_ADDRESS, 7);
   t_second = rtc_bcd2bin(Wire.read() & 0x7F);
