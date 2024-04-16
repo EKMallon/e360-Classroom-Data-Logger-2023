@@ -107,7 +107,7 @@ float rtc_TEMP_degC = 0.0;
 bool booleanBuffer;                           // boolean for functions that return a true/false or 1/0
 uint8_t byteBuffer1 = 9;                      // 1-byte (8 bit) type = unsigned number from 0 to 255
 uint8_t byteBuffer2 = 9;                      // note: uint8_t is the same as byte variable type
-int16_t integerBuffer = 9999;                 // 2-byte from -32,768 to 32,767
+int16_t int16_Buffer = 9999;                 // 2-byte from -32,768 to 32,767
 uint16_t uint16_Buffer= 9999;                 // 2-byte from 0 to 65535
 int32_t int32_Buffer = 9999;                // 4-byte from -2,147,483,648 to 2,147,483,647
 uint32_t uint32_Buffer= 9999;                 // 4-byte from 0 to 4,294,967,295 //used for millis() timing
@@ -782,11 +782,12 @@ void loop(){
 // Setup ADC to read the coincell voltage DURING the EEprom data save:
 //---------------------------------------------------------------------------------
     bitSet(ACSR,ACD); //disable analog comparator ~51µA.
-    SPCR = 0; ADCSRA =0; power_all_disable(); power_adc_enable();
-    ADMUX = set_ADMUX_2readRailVoltage; ADCSRA = set_ADCSRA_2readRailVoltage;     // configure the 2 ADC control registers ADMUX & ADCSRA by loading the byte pattern from variables
-    bitWrite(ADCSRA,ADPS2,1);bitWrite(ADCSRA,ADPS1,1);bitWrite(ADCSRA,ADPS0,1);   // ADC speed: 128 prescalar =62.5khz, this is SLOWER than normal! ~208uS /ADC readings 
-    bitSet(ADCSRA,ADSC);    //while(bit_is_set(ADCSRA,ADSC));                     // triggers a 1st throw-away ADC reading to engauge the Aref capacitor //1st read takes 20 ADC clock cycles instead of usual 13  
-    LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF); 
+    SPCR = 0; ADCSRA =0; power_all_disable();  
+    power_adc_enable(); power_twi_enable(); power_timer0_enable();
+    ADMUX = set_ADMUX_2readRailVoltage; ADCSRA = set_ADCSRA_2readRailVoltage;     // NOTE: ADC @2x normal in setup 32 ADC prescalar
+    bitWrite(ADCSRA,ADPS2,1);bitWrite(ADCSRA,ADPS1,1);bitWrite(ADCSRA,ADPS0,0);   // 64 (default) prescalar @ 8MHz/64 = 125 kHz, =~104uS/ADC reading
+    bitSet(ADCSRA,ADSC);                                                          // triggers a 1st throw-away ADC reading to engauge the Aref cap //1st read takes 20 ADC clock cycles instead of usual 13  
+    LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF);
   // NOTE: Aref capacitor Rise time can take 5-10 milliseconds after starting ADC so 15ms of ADC_ON powerDown sleep works 
 
 //---------------------------
@@ -825,7 +826,6 @@ void loop(){
 //---------------------------------------------------------------------------------
 
 //---------------------------------------------------------------------------------
-  power_twi_enable();
   Wire.beginTransmission(EEpromI2Caddr);            // STARTS filling the I2C transmission buffer with the eeprom I2C bus address
   Wire.write(highByte(EEmemoryPointr));             // send the HighByte of the EEprom memory location we want to write to
   Wire.write(lowByte(EEmemoryPointr));              // send the LowByte of the EEprom memory location   // Note: we add  'bytes per record' to EEmemoryPointr at the end of the main loop  
@@ -851,8 +851,8 @@ void loop(){
 
 #ifdef logLowestBattery                           // INDEX compression converts lowBattery reading to # less than 255 which can be stored in one byte eeprom memory location
 //-------------------------------------------------------------------------------------------------------
-  integerBuffer = (LowestBattery-1700)/16;        // index compression looses some data due to rounding error  - so record is reduced to only 16mv/bit resolution
-  byteBuffer1 = lowByte(integerBuffer);
+  int16_Buffer = (LowestBattery-1700)/16;        // index compression looses some data due to rounding error  - so record is reduced to only 16mv/bit resolution
+  byteBuffer1 = lowByte(int16_Buffer);
   if(byteBuffer1<1){byteBuffer1=1;}               // ONLY THE FIRST data byte in each record must have a ZERO TRAP to preserve End Of Data indicator in EEprom
         Wire.write(byteBuffer1);                  // write that single compressed byte to eeprom (we will have to expand it back later !) 
 #endif //logLowestBattery
@@ -860,12 +860,12 @@ void loop(){
 #ifdef logRTC_Temperature                         // NOTE: this 1-byte COMPRESSED encoding limits our temperature range to 0-63 degrees 
 //--------------------------------------------------------------------------------------------------------
   floatBuffer = (rtc_TEMP_degC + 10.0)*4;         // *4 converts the RTC temperature into a small integer (63*4= 252 - within the range of one byte!)
-  integerBuffer = (int)(floatBuffer);             // adding 10 shifts the 63 degree range, so we can record -10C to +53C  // there is no loss of information because the resolution is only 0.25C 
+  int16_Buffer = (int)(floatBuffer);             // adding 10 shifts the 63 degree range, so we can record -10C to +53C  // there is no loss of information because the resolution is only 0.25C 
        
-  if(integerBuffer>255){integerBuffer=255;}       // temps above 53 C get clipped because a byte cant represent them
-  if(integerBuffer<1){integerBuffer=1;}           // Zero Trap to preserve End of Data check, this sets lower cutoff temp to -9.75C (but our coincell is dead before that)
+  if(int16_Buffer>255){int16_Buffer=255;}       // temps above 53 C get clipped because a byte cant represent them
+  if(int16_Buffer<1){int16_Buffer=1;}           // Zero Trap to preserve End of Data check, this sets lower cutoff temp to -9.75C (but our coincell is dead before that)
 
-  byteBuffer1 = lowByte(integerBuffer);
+  byteBuffer1 = lowByte(int16_Buffer);
   //if(byteBuffer1<1){byteBuffer1=1;}             // ONLY THE FIRST data byte saved in each record must have a ZERO TRAP to preserve zero EOF indicators in EEprom
         Wire.write(byteBuffer1); 
 #endif //logRTC_Temperature
@@ -914,31 +914,31 @@ void loop(){
 
 #ifdef recordBMPtemp
   Bmp280_Temp_degC = Bmp280_Temp_degC*100.00;   //convert float reading to integer preserving two decimal places
-  integerBuffer = (int16_t)Bmp280_Temp_degC;  
-  loByte = lowByte(integerBuffer);              // first byte of record gets checked by 
+  int16_Buffer = (int16_t)Bmp280_Temp_degC;  
+  loByte = lowByte(int16_Buffer);              // first byte of record gets checked by 
   //if(loByte<1){loByte=1;}                     // to preserve zero EOF indicator in 'empty' EEprom space
         Wire.write(loByte);
-  hiByte = highByte(integerBuffer);
+  hiByte = highByte(int16_Buffer);
         Wire.write(hiByte);  
 #endif
 
 #ifdef recordBMPpressure
   Bmp280_Pr_mBar = Bmp280_Pr_mBar*10.0;         //convert float reading to integer preserving ONE decimal place
-  integerBuffer = (int16_t)Bmp280_Pr_mBar;  
-  loByte = lowByte(integerBuffer);              // first byte of record gets checked by 
+  int16_Buffer = (int16_t)Bmp280_Pr_mBar;  
+  loByte = lowByte(int16_Buffer);              // first byte of record gets checked by 
   //if(loByte<1){loByte=1;}                     // to preserve zero EOF indicator in 'empty' EEprom space
         Wire.write(loByte);
-  hiByte = highByte(integerBuffer);
+  hiByte = highByte(int16_Buffer);
         Wire.write(hiByte);     
 #endif
 
 #ifdef recordBMPaltitude
   Bmp280_altitude_m = Bmp280_altitude_m*100.00;     //convert float reading to integer preserving two decimal places
-    integerBuffer = (int16_t)Bmp280_altitude_m;   // Note: *100 overuns the int at higher altitudes - switch to *10
-  loByte = lowByte(integerBuffer);              // first byte of record gets checked by 
+    int16_Buffer = (int16_t)Bmp280_altitude_m;   // Note: *100 overuns the int at higher altitudes - switch to *10
+  loByte = lowByte(int16_Buffer);              // first byte of record gets checked by 
   //if(loByte<1){loByte=1;}                     // to preserve zero EOF indicator in 'empty' EEprom space
         Wire.write(loByte);
-  hiByte = highByte(integerBuffer);
+  hiByte = highByte(int16_Buffer);
         Wire.write(hiByte);  
 #endif
 
@@ -959,59 +959,55 @@ void loop(){
   hiByte =  highByte(TEMP_si7051); 
         Wire.write(hiByte);
 #endif //Si7051_Address
- 
 
 //-------------------------------------------------------------------------------
+    bitSet(ADCSRA,ADSC); //trigger the next ADC during the I2C send takes .104 msec
     Wire.endTransmission(); // ONLY AT THIS POINT do the bytes accumulated in the buffer actually get sent
 //-------------------------------------------------------------------------------
 // The EEPROM enters an internally-timed write cycle to memory which takes ~3-10ms [longer for larger eeproms because of page size]
 // 4k AT24c32 write draws ~10mA for about 10ms @3mA, but newer eeproms can take only only 5ms @3mA
 // the coincell battery experiences a SIGNIFICANT VOLTAGE DROP due to its internal resistance during this load
-// we loop through slow ADC readings in sleep mode IDLE (which leaves I2C and ADC running) to catch the lowest battery point
 //-------------------------------------------------------------------------------
 
-  bitSet(ADCSRA,ADIE);                                  // tells ADC to generate processor interrupts to wake the processor when a new ADC reading is ready
-  bitSet(ACSR,ADIF);                                    // clears any previous ADC interrupt flags
-  set_sleep_mode( SLEEP_MODE_IDLE );                    // IDLE leaves the I2C bus running
-  bitSet(ADCSRA,ADSC);                                  // trigger 1st throw-away ADC read
-    do{ sleep_mode();                                   // sleep_mode macro combines sleep sleep_enable() & sleep_disable() w sleep_cpu() command
-       }while (bit_is_set(ADCSRA,ADSC));
-  uint16_Buffer=1;
-  
-   do{   
-      for (uint8_t ADCreadsPerPoll = 0; ADCreadsPerPoll<10; ADCreadsPerPoll++) {  // 10x 200uS/read at 128 prescalar only polls the EEprom every 2 msec - EEprom save takes up to 10milliseconds
-          bitSet(ADCSRA,ADSC);                          // start new ADC reading  // at 128 prescalar ~208uS /ADC readings 
-            do{ sleep_mode();                           // sleep_mode macro combines sleep enable & disable with sleep_cpu command = sleep_disable(); not needed with sleep_mode();         
-            }while (bit_is_set(ADCSRA,ADSC));           // bit stays 1 while ADC is reading, ADC sets ADSC bit to zero ONLY when conversion is finished
-        if(ADC>uint16_Buffer){uint16_Buffer=ADC;}       // updates uint16_Buffer only when new ADC is HIGHER because relationship between ADCread & rail voltage in INVERTED with our 1.1vref method
-        }// terminates for (uint8_t ADCreadsPerPoll
-        
-        Wire.beginTransmission(EEpromI2Caddr);          // Poll the EEprom to see if it has finished the data save
-        byteBuffer1 = Wire.endTransmission();           // returns 0 ONLY when EEprom is READY for more data 
-          
-      }while (byteBuffer1 != 0x00);
-              
-  bitClear(ADCSRA,ADIE);bitSet(ACSR,ADIF);              // turn off the ADC interrupts & clears any ADC interrupt flags
-  ADMUX = default_ADMUX;                                // restore defaults
+  do{ }while(bit_is_set(ADCSRA,ADSC)); uint16_Buffer = ADC;
+  bitSet(ADCSRA,ADSC); while(bit_is_set(ADCSRA,ADSC)); int16_Buffer=ADC;
+  if(int16_Buffer>uint16_Buffer){uint16_Buffer=int16_Buffer;}
   ADCSRA = 0; power_adc_disable();                      // turn off ADC
-  
+
+// CRITICAL understanding: EEproms are VERY sensitive to voltage fluctuations during the save and will HANG if you do much
+// WARNING: do not attempt EEprom Polling here - the I2C exchange draws FAR MORE CURRENT than the save process does
+// WARNING: do not use CLKPR to reduce CPU current during ADC readings as this also leads to instability / lockups
+// (ALSO WAKING from sleep is multiplied when running at a slower clock speed and this can defeat the power savings slow sysclocks are combined with a sleep modes)
+
+    if(EEbytesOfStorage==4096){  // battery recovery time from EEprom save event
+    LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF); //LowPower.idle fails with 4K eeproms!
+                                                      //also WORKS with THE 4k eeproms: LowPower.adcNoiseReduction(SLEEP_15MS, ADC_OFF, TIMER2_OFF);
+    } else { // the 64k+ eeproms will ONLY WORK WITH SLEEP MODE IDLE here
+      LowPower.idle(SLEEP_15MS, ADC_OFF, TIMER2_OFF, TIMER1_OFF, TIMER0_ON, SPI_OFF, USART0_OFF, TWI_ON);
+      // CRITICAL understanding: DO NOT TURN OFF THE I2C bus or Timer0 while the EEPROM is saving
+      // I'm not sure why this is, but the EEprom hangs if you powerdown all the peripherals during the save event
+      // However LowPower.idle fails with 4K eeproms! - even though ONLY IDLE MODE sleeps work with 64k eeproms!
+    }
+    
   bitClear(DDRB,5);bitSet(PORTB,5);                     // pip the red D13 LED w INPUT_PULLUP to indicate EEprom memory save(optional)
-  LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF);     // Cr2032 Battery recovery time: & larger eeproms seem to need some recovery time or RTC alarm wont set
+  LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);     // Cr2032 Battery recovery time: & larger eeproms seem to need some recovery time or RTC alarm wont set
+  //Waking the 328p from powerdown sleep takes 16,000 clock cycles (~2milliseconds @8MHz +60µS if BOD_OFF) and the ProMini draws ~250µA while waiting for the oscillator to stabilize.
   bitClear(PORTB,5);                                    // D13 red LED: pullup OFF
   
-  uint16_Buffer=uint16_Buffer+1;                        // on the oscilloscope the EEpolling briefly pulled the concell voltage down another 10-15 mvolts
-                                                        // this was probably not captured during the ADC readings which typicaly see 30-40mv drop during EEsave so bumping the ADC reading by one
-  CurrentBattery = InternalReferenceConstant / uint16_Buffer;
-  if(t_hour==0 && t_minute==0 && t_second==0){  LowestBattery = 5764; }  // midnight reset to high value prevents 'occasional' low battery readings from permanently affecting the record                              
-  if(CurrentBattery < LowestBattery){ LowestBattery = CurrentBattery;} 
+  uint16_Buffer=uint16_Buffer+1;// compensates for very short drop spikes observed on 'scope (with 200uF rail caps)
+#ifdef logLowestBattery 
   LowestBattery = InternalReferenceConstant / uint16_Buffer;
+  //if logging Lowest (say for NTC calibrations) let low battery get over-written every time it is generated
+#else   // we are logging the lowbat only ONCE PER DAY
+  CurrentBattery = InternalReferenceConstant / uint16_Buffer;
+  if(t_hour==0 && t_minute==0 && t_second==0){  LowestBattery = 5764; }  // midnight reset to high value prevents 'occasional' low battery readings from permanently affecting the battery record                              
+  if(CurrentBattery < LowestBattery){ LowestBattery = CurrentBattery;} 
+#endif
   
-  power_timer0_enable();                                // Timer0 is needed for millis, delays   
   if(ECHO_TO_SERIAL){
       power_usart0_enable();
       Serial.print(F(", Lowest Bat[mV]: "));Serial.println(LowestBattery);Serial.flush();
       } 
-
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++   
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -1614,9 +1610,9 @@ if (!convertDataFlag){    // then output raw bytes exactly as read from eeprom [
 #endif
 
 #ifdef logRTC_Temperature                                   // RTC temperature 1-byte compressed: low side cutoff at 1 for minimum reading of -12.25C
-      integerBuffer = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr);
+      int16_Buffer = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr);
       EEmemoryPointr++;
-      floatBuffer = integerBuffer;
+      floatBuffer = int16_Buffer;
       floatBuffer = (floatBuffer/4.0)-10.0;                 // REVERSING the calculation we used to compress the data into one byte
       Serial.print(floatBuffer,2);Serial.print(F(","));     // ,2) specifies that you only print two decimal places
 #endif  //#ifdef logRTC_Temperature 
@@ -1672,8 +1668,8 @@ if (!convertDataFlag){    // then output raw bytes exactly as read from eeprom [
       EEmemoryPointr++;
       hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr); //hi byte
       EEmemoryPointr++;
-      integerBuffer = (int16_t)((hiByte << 8) | loByte);
-      floatBuffer  = (float)(integerBuffer)/100.0;
+      int16_Buffer = (int16_t)((hiByte << 8) | loByte);
+      floatBuffer  = (float)(int16_Buffer)/100.0;
       Serial.print(floatBuffer,2);Serial.print(",");
 #endif
 
@@ -1682,8 +1678,8 @@ if (!convertDataFlag){    // then output raw bytes exactly as read from eeprom [
       EEmemoryPointr++;
       hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr); //hi byte
       EEmemoryPointr++;
-      integerBuffer = (int16_t)((hiByte << 8) | loByte);
-      floatBuffer  = (float)(integerBuffer)/10.0;
+      int16_Buffer = (int16_t)((hiByte << 8) | loByte);
+      floatBuffer  = (float)(int16_Buffer)/10.0;
       Serial.print(floatBuffer,1);Serial.print(",");
 #endif
 
@@ -1692,8 +1688,8 @@ if (!convertDataFlag){    // then output raw bytes exactly as read from eeprom [
       EEmemoryPointr++;
       hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemoryPointr); //hi byte
       EEmemoryPointr++;
-      integerBuffer = (int16_t)((hiByte << 8) | loByte);
-      floatBuffer  = (float)(integerBuffer)/100.0;  //Note: *100 over runs the integer at higher altitudes, in that case switch to *10
+      int16_Buffer = (int16_t)((hiByte << 8) | loByte);
+      floatBuffer  = (float)(int16_Buffer)/100.0;  //Note: *100 over runs the integer at higher altitudes, in that case switch to *10
       Serial.print(floatBuffer,1);Serial.print(",");
 #endif
       
@@ -2118,7 +2114,7 @@ void error_shutdown() {
   
   // SLEEP ANY CONNECTED SENSORS before you disable I2C
 
-  //shut down RTC alarms & oscilator (if battery is dead)
+  //shut down RTC alarms
     Wire.beginTransmission(DS3231_ADDRESS);
     Wire.write(DS3231_STATUS_REG);
     Wire.write(0);    // clearing the entire status register turns Off (both) RTC alarms though technically only the last two bits need to be set
@@ -2134,7 +2130,7 @@ void error_shutdown() {
       power_usart0_disable();
       }   
   
-  // FLOAT all pins so no current can leak after shutdown:
+  // FLOAT all pins so no current can't leak after shutdown:
   for (uint8_t i = 0; i <=13; i++) { 
         pinMode(i,INPUT);
         }
