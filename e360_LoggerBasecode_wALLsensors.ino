@@ -969,9 +969,8 @@ void loop(){
 // the coincell battery experiences a SIGNIFICANT VOLTAGE DROP due to its internal resistance during this load
 //-------------------------------------------------------------------------------
 
-  do{ }while(bit_is_set(ADCSRA,ADSC)); uint16_Buffer = ADC;
-  bitSet(ADCSRA,ADSC); while(bit_is_set(ADCSRA,ADSC)); int16_Buffer=ADC;
-  if(int16_Buffer>uint16_Buffer){uint16_Buffer=int16_Buffer;}
+  do{ }while(bit_is_set(ADCSRA,ADSC));  // throw away the first ADC reading
+  bitSet(ADCSRA,ADSC); while(bit_is_set(ADCSRA,ADSC)); uint16_Buffer=ADC;
   ADCSRA = 0; power_adc_disable();                      // turn off ADC
 
 // CRITICAL understanding: EEproms are VERY sensitive to voltage fluctuations during the save and will HANG if you do much
