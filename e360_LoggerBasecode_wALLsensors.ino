@@ -30,7 +30,7 @@ These 'powers of 2' fit in the I2C buffer AND divide evenly into the EEproms har
 
 //#define countPIReventsPerSampleInterval   // 2-bytes:  saves # of PIR HIGH events in a specified sample interval. Do not enable this with PIRtriggersSensorReadings - choose one or the other
 
-//#define readNTC_onD7                      // 2-bytes: ohms // for explanation of the method for reading analog resistance with digital pins see
+#define readNTC_onD7                      // 2-bytes: ohms // for explanation of the method for reading analog resistance with digital pins see
 //#define readLDR_onD6                      // 2-bytes: ohms // https://thecavepearlproject.org/2019/03/25/using-arduinos-input-capture-unit-for-high-resolution-sensor-readings/
                                             // these have to match the connections shown in the build lab!
 
@@ -43,12 +43,16 @@ These 'powers of 2' fit in the I2C buffer AND divide evenly into the EEproms har
 //#define logCurrentBattery on              // 2-byte: saves CurrentBattery in sensor records - could be compressed...
 //#define Si7051_Address 0x40               // 2-bytes: si7051 is often used for NTC calibration
 
-//#define OLED_64x32_SSD1306      // not a sensor, but enabled with define to include needed library - requires 1000uF rail capacitor!-
+//#define OLED_64x32_SSD1306                // not a sensor, but enabled with define to include needed library - requires 1000uF rail capacitor!-
 
 #define EEpromI2Caddr 0x57                  // Run a bus scanner to check where your eeproms are https://github.com/RobTillaart/MultiSpeedI2CScanner
 #define EEbytesOfStorage 4096               // Default: 0x57 / 4096 bytes for 4k on RTC module // 32k I2C EEprom Module: set to 0x50 & 32768   // note EEmemoryPointr would have to be uint32_t for 64k eeproms
 
-#define LED_r9_b10_g11_gnd12 installed      // enables code for RGB indicator LED //1k limit resistor on shared GND line! // Red LED on D13 gets used as indicator if this #define is commented out
+// 2 LED configurations but LED_r9_b10_g11_gnd12 is the DEFAULT on the e360 logger to enable the PWM lab
+#define LED_r9_b10_g11_gnd12                // enables code for RGB indicator LED //1k limit resistor on shared GND line!
+// alternate:                               // NOTE: Red LED on D13 gets used if both of the above #define statements are commented out
+// #define LED_GndGB_A0_A2                  // For earlier 2-module build with NO breadboards: red channel leg on led cut, A0gnd Green A1, blue A2, default Red on d13 left in place
+
 
 #include <Wire.h>       // I2C bus coms library: RTC, EEprom & Sensors
 #include <EEPROM.h>     // note: requires default promini bootloader (ie NOT optiboot)
@@ -101,6 +105,8 @@ uint16_t t_year;                              //current year //note: yOff = raw 
 uint8_t Alarmday,Alarmhour,Alarmminute,Alarmsecond; // calculated variables for setting next alarm
 volatile boolean rtc_INT0_Flag = false;       // used in startup time sync delay //volatile because it's changed in an ISR // rtc_d2_alarm_ISR() sets this boolean flag=true when RTC alarm wakes the logger
 float rtc_TEMP_degC = 0.0;
+bool stopRTCoscillator = false;
+bool DS3231_PowerLossFlag = false;
 
 // temporary 'buffer' variables only used during calculations
 //------------------------------------------------------------------------------
@@ -253,7 +259,13 @@ void setup () {
     for (int i = 9; i <=12; i++) { digitalWrite(i, LOW);  pinMode(i, INPUT); }
     pinMode(12, OUTPUT);                            //the common ground line on our RGB led must OUTPUT to allow current
   #endif
-                         
+
+  #ifdef LED_GndGB_A0_A2
+    bitClear(PORTC,1); bitClear(DDRC,1);       // A1 [green] LED LOW & INPUT
+    bitClear(PORTC,2); bitClear(DDRC,2);       // A2 [Blue] LED LOW & INPUT
+    bitClear(PORTC,0); bitSet(DDRC,0);         // A0 GND pin LOW & OUTPUT
+#endif //LED_GndGB_A0_A2
+
   // set UNUSED digital pins to LOW & OUTPUT so EMI noise does not toggle the pin & draw current
     for (int i = 3; i <=8; i++) { digitalWrite(i, LOW);  pinMode(i, OUTPUT); } //Note: if an interrupt source connected to D3 then the pin must be reset to INPUT
 
@@ -266,9 +278,10 @@ void setup () {
 // ADC Configuration: default & modified control register settings saved into storage variables
 //------------------------------------------------------------------------------------------------------------
 // A3..A0 - make sure pullups are OFF so they dont interefere with ADC readings // ignore A4/5 because I2C bus has hardware pullups (on RTC module)
-   digitalWrite(A0,LOW);digitalWrite(A1,LOW);digitalWrite(A3,LOW);
-   DIDR0 = 0x0F;                                    // diconnects the DIGITAL inputs sharing analog pins 0..3 (but NOT on 4&5 which are used by I2C as digital pins) //Once disabled, a digitalRead on those pins will always return zero.
-                                                    // Digital input circuits can 'leak' a relatively high amount of current if the analog input is approximately half-Vcc 
+    digitalWrite(A0,LOW);digitalWrite(A1,LOW);digitalWrite(A3,LOW);
+  #ifndef LED_GndGB_A0_A2                           // diconnects the DIGITAL inputs sharing analog pins 0..3 (but NOT on 4&5 which are used by I2C as digital pins) 
+    DIDR0 = 0x0F;                                   // Once disabled, a digitalRead on those pins will always return zero.
+  #endif                                            // Digital input circuits can 'leak' a relatively high amount of current if the analog input is approximately half-Vcc 
 
   analogReference(DEFAULT); analogRead(A3);         // sets the ADC channel to A3 input pin
   default_ADCSRA = ADCSRA; default_ADMUX = ADMUX;   // Saves the DEFAULT ADC control registers into byte variables so we can restore those ADC control settings later
@@ -287,14 +300,14 @@ void setup () {
 
 // Configure the DS3231 Real Time Clock control registers for coincell powered operation
 //------------------------------------------------------------------------------------------------------------
-  Wire.begin();                                     // Start the I2C bus // enables internal 30-50k pull-up resistors on SDA & SCL by default
-  
+  Wire.begin();   // Start the I2C bus // enables internal 30-50k pull-up resistors on SDA & SCL by default
+
+  DS3231_PowerLossFlag = i2c_readRegisterByte(DS3231_ADDRESS, DS3231_STATUS_REG) >> 7; //0Fh bit 7 is OSF: Oscillator Stopped Flag
   // i2c_setRegisterBit function requires: (deviceAddress, registerAddress, bitPosition, 1 or 0)
   i2c_setRegisterBit(DS3231_ADDRESS, DS3231_STATUS_REG, 3, 0);  // disable the 32khz output  pg14-17 of datasheet  // This does not reduce the sleep current but can't run because we cut VCC
   i2c_setRegisterBit(DS3231_ADDRESS, DS3231_CONTROL_REG, 6, 1); // 0Eh Bit 6 (Battery power ALARM Enable) - MUST set to 1 for wake-up alarms when running from the coincell bkup battery
   i2c_setRegisterBit(DS3231_ADDRESS, DS3231_CONTROL_REG, 7, 0); // Enable Oscillator (EOSC).  This bit is clear (logic 0) when power is first applied.  EOSC = 0 IS REQUIRED with OUR LOGGER DESIGN:
                                                                 // when EOSC (bit7) is 0, the RTC oscillator continues running during battery powered operation. Otherwise it would stop.
-
   RTC_DS3231_turnOffBothAlarms();                               // stops RTC from holding the D2 interrupt line low if system reset just occured 
   digitalWrite(2, LOW);  pinMode(2, INPUT);                     // D2 INPUT & D2 pullup off because it is not requried with 4k7 hardware pullups on the RTC module
   bitSet(EIFR,INTF0); bitSet(EIFR,INTF1);                       // clears any previous trigger-flags inside the 328p processor for interrupt 0 (D2) &  interrupt 1 (D3)
@@ -565,11 +578,15 @@ RTC_DS3231_getTime();                     // populates the global variables t_da
 //------------------------------------------------------------------------------
 // FIRST sampling wakeup alarm is already set But instead of simply going to sleep we will use LowPower.powerDown SLEEP_500MS
 // to wake the logger once per second to toggle the LEDs ON/Off so user can tell we are in the sync-delay period before logging starts
-  #ifdef LED_r9_b10_g11_gnd12               // RED & BLUE leds start in opposite states so they ALTERNATE when toggled by the PIN register
-        digitalWrite(10,LOW);pinMode(10,OUTPUT); // D10 [Blue] LED Output low   //pinMode(10,INPUT);           for lower current around 50uA
-        digitalWrite(9,HIGH);pinMode(9,OUTPUT);  // D10 [Red] LED outputl high  //pinMode(9,INPUT_PULLUP);     OUTPUT HIGH PULLS 1.5 mA
+  #if defined(LED_r9_b10_g11_gnd12)               // RED & BLUE leds start in opposite states so they ALTERNATE when toggled by the PIN register
+        digitalWrite(10,LOW);pinMode(10,OUTPUT);  // D10 [Blue] LED Output low   //pinMode(10,INPUT);           for lower current around 50uA
+        digitalWrite(9,HIGH);pinMode(9,OUTPUT);   // D10 [Red] LED outputl high  //pinMode(9,INPUT_PULLUP);     OUTPUT HIGH PULLS 1.5 mA
+  #elif defined(LED_GndGB_A0_A2)
+        pinMode(A2,INPUT);digitalWrite(A2,HIGH);  // A2 [Blue] LED INPUT & PULLUP ON //bitClear(DDRC,2);bitSet(PORTC,2); 
+        pinMode(A1,INPUT);digitalWrite(A1,LOW);   // A1 [Green] LED INPUT & PULLUP OFF //bitClear(DDRC,1);bitClear(PORTC,2);
+        digitalWrite(A0,LOW);pinMode(A0,OUTPUT);  // LED ground enabled // PORTC&= B11111110; DDRC|=B00000001; // A0 LOW (0) & OUTPUT (1) 
   #else
-        pinMode(13,INPUT);                    // D13 onboard red LED INPUT with PULLUP OFF  
+        pinMode(13,INPUT);                        // D13 onboard red LED INPUT with PULLUP OFF  
   #endif
 
   byteBuffer1 = 2;
@@ -588,11 +605,15 @@ RTC_DS3231_getTime();                     // populates the global variables t_da
 //terminates synchronization time delay -we are now ready to start logging!
 //------------------------------------------------------------------------------------------------------------
 
-      pinMode(13,INPUT);                                      // D13 [Onboard Red] indicator LED PULLUP OFF   // alt:  bitClear(PORTB,5); would also do this job 
-  #ifdef LED_r9_b10_g11_gnd12
+  #if defined(LED_r9_b10_g11_gnd12)
       pinMode(11,INPUT);pinMode(10,INPUT);pinMode(9,INPUT);   // turn all indicators OFF at end of setup
-      digitalWrite(12,LOW);pinMode(12,OUTPUT);                // the common ground line on our RGB led must OUTPUT to allow current
-    #endif
+      digitalWrite(12,LOW);pinMode(12,OUTPUT);                // the common ground line on our RGB led must be OUTPUT to allow current
+  #elif defined(LED_GndGB_A0_A2)
+      bitClear(PORTC,2);                                      // A2 [Blue] LED PULLUP OFF
+      bitClear(PORTC,1);                                      // A1 [Green] LED PULLUP OFF
+  #else
+      pinMode(13,INPUT);                                      // D13 [Onboard Red] indicator LED PULLUP OFF   // bitClear(PORTB,5); would also do this job 
+  #endif
 
   #ifndef logCurrentBattery                //readBattery(); Must be at the end of setup because it disables Serial if ECHO is off
     LowestBattery = readBattery();         //sets starting value for LowBat, but only needed if not logging CurrentBat
@@ -768,11 +789,12 @@ void loop(){
 //----------------------------------------------------------------------------------------
 // HEARTBEAT pip of the LED at the end of the senor readings // each channel draws 30-50uA
 //----------------------------------------------------------------------------------------
-    #ifdef LED_r9_b10_g11_gnd12           // Colors can be combined for the LED pip!
+    #if defined(LED_r9_b10_g11_gnd12)     // Colors can be combined for the LED pip but Red is too dim to see with pullup
       pinMode(11,INPUT_PULLUP);           // Green is brightest
       pinMode(10,INPUT_PULLUP);           // Blue mixes well with green
-      //pinMode(9,INPUT_PULLUP);          // Red is too dim to see with pullup
-    #else  //or use the default red led on D13
+    #elif defined(LED_GndGB_A0_A2)
+      bitClear(DDRC,1); bitSet(PORTC,1);  //same as pinMode(A1,INPUT_PULLUP);, GreenLED = pinMode(A1,INPUT_PULLUP);
+    #else                                 //or use the default red led on D13
       pinMode(13,INPUT_PULLUP);
     #endif
     
@@ -793,12 +815,13 @@ void loop(){
 //---------------------------
 // turn off the HEARTBEAT pip
 //---------------------------
-    #ifdef LED_r9_b10_g11_gnd12           // Colors can be combined for the LED pip!
-    pinMode(10,INPUT);                    // D10 [blue] LED pullup Off 
-    pinMode(11,INPUT);                    // D11 [Green] LED pullup Off
-    //pinMode(9,INPUT);                   // D9 [red] LED pullup Off 
-    #else  //or use the default red led on D13
-      pinMode(13,INPUT);                    // pin13 indicator LED pullup Off
+    #if defined(LED_r9_b10_g11_gnd12)    // Colors can be combined for the LED pip!
+      pinMode(10,INPUT);                  // D10 [blue] LED pullup Off 
+      pinMode(11,INPUT);                  // D11 [Green] LED pullup Off
+    #elif defined(LED_GndGB_A0_A2)
+      bitClear(PORTC,1);                  // same as pinMode(A1,INPUT);// A1 Green LED: pullup OFF
+    #else
+      pinMode(13,INPUT);                  // pin13 indicator LED pullup Off
     #endif
 
 //---------------------------------------------------------------------------------
@@ -1125,12 +1148,12 @@ void loop(){
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ 
 
   if (LowestBattery <= systemShutdownVoltage){
-      error_shutdown(); // shutdown down the logger
+      stopRTCoscillator=true; error_shutdown(); // shutdown down the logger
       } 
   
   EEmemoryPointr = EEmemoryPointr + bytesPerRecord;     //advances our memory pointer for the next loop
   if( EEmemoryPointr >= EEbytesOfStorage){              // if eeprom memory is full
-      error_shutdown();                                 // shutdown down the logger
+      stopRTCoscillator=true; error_shutdown();                                 // shutdown down the logger
       }
 
 #ifdef countPIReventsPerSampleInterval                            //Logger can be woken by D2 AND D3 interrupt events
@@ -1219,12 +1242,20 @@ void sleepNwait4D3InterruptORrtcAlarm(){
                                                                     // this is somewhat unnecessary given the sensor has a 2-second reset time...
 
    // Pip blue LED to indicate PIR wakeup event being counted
-        #ifdef LED_r9_b10_g11_gnd12 
+      #if defined(LED_r9_b10_g11_gnd12) 
         digitalWrite(10,HIGH); pinMode(10,OUTPUT);          // or pinMode(10,INPUT_PULLUP); // BLUE 
-        #endif
-        LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);    // time to view LED pip
-        pinMode(10,INPUT);                                  // D10 [blue] LED pullup OFF
-       
+      #elif defined(LED_GndGB_A0_A2)
+        bitClear(DDRC,2);bitSet(PORTC,2);                   // Blue LED = pinMode(A2,INPUT_PULLUP);
+      #endif
+        
+        LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);   // time to view LED pip
+      
+      #if defined(LED_r9_b10_g11_gnd12) 
+        pinMode(10,INPUT);                                  // D10 [blue] LED pullup OFF 
+      #elif defined(LED_GndGB_A0_A2)
+        bitClear(PORTC,2);                                  // A2 Blue LED: pullup OFF
+      #endif   
+         
     } else { // If d3_INT1_Flag is still false then we woke from the RTC alarm - not the PIR, so Int1 still needs detached
        detachInterrupt(1);
     }
@@ -1402,7 +1433,9 @@ void startMenu_printMenuOptions(){          // note: setup_sendboilerplate2seria
     Serial.println();
     
     Serial.println();
-    Serial.println(F("Select one of the following options:"));
+    if (DS3231_PowerLossFlag){ //Oscillator Stop Flag (OSF). A logic 1 in bit7 indicates that the oscillator is stopped or was stopped for some period due to power loss
+    Serial.print(F("**** Set the CLOCK time! ****   RTC Oscillator Stop detected!"));
+    }else{Serial.print(F("Select one of the following options:"));}
     Serial.println(F("  [1] DOWNLOAD Data"));
     Serial.println(F("  [2] Set CLOCK       [3] Set INTERVAL    [4] DEPLOYMENT info"));
     Serial.println(F("  [5] Logger Details  [6] Cal. Constants  [7] Change Vref"));
@@ -1485,8 +1518,8 @@ void startMenu_setRTCtime(){
     Serial.print(F("Clock updated by "));Serial.print(int32_Buffer);Serial.print(F(" seconds"));
     delay(15);                                          // more RTC register memory write-time
     i2c_setRegisterBit(DS3231_ADDRESS,DS3231_STATUS_REG,7,0); //clear the OSF flag after time is set
+    DS3231_PowerLossFlag=false;
     }   //terminates if (set_t_month==0 && set_t_day==0){
-
 }
 
 void startMenu_sendData2Serial(boolean convertDataFlag){ // called at startup via serial window
@@ -2083,7 +2116,7 @@ uint16_t readBattery(){                                 // reads 1.1vref as inpu
         if(ECHO_TO_SERIAL){
           Serial.print(railvoltage); Serial.println(F(" battery voltage too low!")); Serial.flush();
         }
-      error_shutdown();}                                // this shuts down the logger
+      stopRTCoscillator=true; error_shutdown();}                                // this shuts down the logger
          
   return railvoltage; 
 }  // terminator for readBattery()
@@ -2113,7 +2146,7 @@ void error_shutdown() {
   
   // SLEEP ANY CONNECTED SENSORS before you disable I2C
 
-  //shut down RTC alarms
+  //shut down RTC alarms (does not always work!)
     Wire.beginTransmission(DS3231_ADDRESS);
     Wire.write(DS3231_STATUS_REG);
     Wire.write(0);    // clearing the entire status register turns Off (both) RTC alarms though technically only the last two bits need to be set
@@ -2122,6 +2155,15 @@ void error_shutdown() {
     bitSet(EIFR,INTF0);                               // clear flag for interrupt 0  see: https://gammon.com.au/interrupts
     bitSet(EIFR,INTF1);                               // clear flag for interrupt 1
     interrupts (); 
+  // NOTE: I have found that even with BBSQW set to ZERO the RTC continues to assert an alarm on SQW!
+  // when an alarm is triggered, the INT/SQW pin goes low, and it stays that way until the appropriate register is cleared in the DS3231
+  // this results in ~700uA drain through the pullup AFTER shutdown which depletes the coincell battery
+  // STOPPING THE RTC OSCILATOR was the only way to prevent those eventual alarms from pulling SQW low:
+  // doing this will require the clock time to be reset @ the next startup!
+  if ((!ECHO_TO_SERIAL)&&(stopRTCoscillator)){                                            // this lowers most loggers from ~2uA to less than 1uA sleep current
+    i2c_setRegisterBit(DS3231_ADDRESS, DS3231_CONTROL_REG, 7, 1);  // When EOSC set to logic 1, the oscillator is stopped when DS3231 is on VBAT power.
+    }   // DS3231_CONTROL_REG Bit 7: Enable Oscillator (EOSC).  This bit is cleared (to logic 0) at the start of our code
+        // Note: Status Register (0Fh) bit 7 Oscillator Stop Flag (OSF) gets set to 1 any time that the oscillator stops
   
    bitSet(ACSR,ACD);                                 // Disable the analog comparator by setting the ACD bit (bit 7) of the ACSR register to one.
    ADCSRA = 0; SPCR = 0;                             // 0 Disables ADC & SPI // only use PRR after disabling the peripheral clocks, otherwise the ADC gets "frozen" in an active state drawing power
@@ -2302,8 +2344,9 @@ static uint16_t rtc_date2days(uint16_t y, uint8_t m, uint8_t d) {
   uint16_t days = d;
   for (uint8_t i = 1; i < m; ++i)
     days += pgm_read_byte(rtc_days_in_month + i - 1);
-  if (m > 2 && (y % 4 == 0)) // modulo checks (if is LeapYear) add extra day
-    ++days;
+    
+  if (m > 2 && (y % 4 == 0)){++days;} // if LeapYear add extra day
+  
   return days + 365 * y + (y + 3) / 4 - 1;
 }
 
