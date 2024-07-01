@@ -514,7 +514,12 @@ RTC_DS3231_getTime();                     // populates the global variables t_da
       }while(Alarmminute % SampleIntervalMinutes); // all non-zero results considered true // forces alignment
       byteBuffer1 = Alarmminute-t_minute;
       }
-  Serial.print(F("Start-up Sync Delay: "));Serial.print(byteBuffer1);Serial.print(F("m "));Serial.print(byteBuffer2);Serial.println(F("s "));Serial.flush();
+
+  Serial.print(F("Start-up Sync Delay: "));
+  if(SampleIntervalMinutes>0){Serial.print(byteBuffer1);Serial.print(F("min"));}
+  if(SampleIntervalSeconds>0){Serial.print(byteBuffer2);Serial.print(F("sec"));}
+  Serial.println();Serial.flush();
+  
   if (Alarmminute > 59 ){ Alarmhour = Alarmhour+1; Alarmminute = 0;}  // alt Alarmminute = SampleIntervalMinutes? for longer delay if started at rollover
   if (Alarmhour > 23)   { Alarmday = Alarmday+1; Alarmhour = 0;}
 
@@ -564,8 +569,8 @@ RTC_DS3231_getTime();                     // populates the global variables t_da
   Wire.endTransmission(); delay(12); 
 
 //------------------------------------------------------------------------------  
-  Serial.println(F("Red&Blue LEDs will light during SYNC DELAY until logger takes 1st reading.")); 
-  Serial.println(F("Then Green/Blue LED pips will show when each sensor reading is collected."));
+  Serial.println(F("LEDs will flicker during SYNC DELAY until logger takes 1st reading.")); 
+  Serial.println(F("Then Green LED pips will show when each sensor reading is collected."));
   Serial.flush();
   
   if(!ECHO_TO_SERIAL){          // if it's not being used, shut down the UART peripheral now to save power
