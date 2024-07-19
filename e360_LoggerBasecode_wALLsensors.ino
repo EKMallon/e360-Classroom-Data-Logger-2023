@@ -159,7 +159,7 @@ volatile boolean d3_INT1_Flag = false;
 //------------------------------------------------------------------------------
   #include <hp_BH1750.h>                    // from  https://github.com/Starmbi/hp_BH1750 returns the sensor to sleep automatically after each read & supports auto-ranging.
   hp_BH1750 bh1750;                         // Instantiate a BH1750FVI library object
-  int16_t lux_BH1750_RawInt;               // raw reading before conversion to lux // 2-byte, 0 to 65535
+  uint16_t lux_BH1750_RawInt;               // raw reading before conversion to lux // 2-byte, 0 to 65535
   #define Bh1750_Address 0x23
 #endif
 
