@@ -1439,12 +1439,11 @@ void startMenu_printMenuOptions(){          // note: setup_sendboilerplate2seria
     
     Serial.println();
     if (DS3231_PowerLossFlag){ //Oscillator Stop Flag (OSF). A logic 1 in bit7 indicates that the oscillator is stopped or was stopped for some period due to power loss
-    Serial.print(F("**** Set the CLOCK time! ****   RTC Oscillator Stop detected!"));
-    }else{Serial.print(F("Select one of the following options:"));}
-    Serial.println(F("  [1] DOWNLOAD Data"));
-    Serial.println(F("  [2] Set CLOCK       [3] Set INTERVAL    [4] DEPLOYMENT info"));
-    Serial.println(F("  [5] Logger Details  [6] Cal. Constants  [7] Change Vref"));
-    Serial.println(F("  [8] Toggle Serial   [9] START logging"));
+    Serial.println(F("**** Set the CLOCK time! ****   RTC Oscillator Stop detected!"));
+    }else{Serial.println(F("Select one of the following options:"));}
+    Serial.println(F("  [1] DOWNLOAD Data   [2] Set CLOCK       [3] Set INTERVAL "));
+    Serial.println(F("  [4] DEPLOYMENT info [5] Logger Details  [6] Cal. Constants"));
+    Serial.println(F("  [7] Change Vref     [8] Toggle Serial   [9] START logging"));
     Serial.println(); Serial.flush();
 }   //terminates startMenu_printMenuOptions
 
