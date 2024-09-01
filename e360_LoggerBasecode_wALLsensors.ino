@@ -24,7 +24,7 @@ These 'powers of 2' fit in the I2C buffer AND divide evenly into the EEproms har
 #define logRTC_Temperature                // 1-byte: the RTC's internal 0.25°C resolution temperature sensor
 //#define logCurrentBattery                 // 2-byte: rarely used - not 1byte compressed like LowestBattery, primarily for powers-of-2 balancing
 
-#define readNTC_D8pullUprD7ntc            // 2-bytes: ohms // for explanation of the method for reading analog resistance with digital pins see
+//#define readNTC_D8pullUprD7ntc            // 2-bytes: ohms // for explanation of the method for reading analog resistance with digital pins see
 //#define readLDR_onD6                      // 2-bytes: ohms // https://thecavepearlproject.org/2019/03/25/using-arduinos-input-capture-unit-for-high-resolution-sensor-readings/
                                             // these have to match the connections shown in the build lab!
 //#define readSi7051_Temperature            // 2-bytes: often used for NTC calibration - does not require a library, functions for si7051 at end of program
