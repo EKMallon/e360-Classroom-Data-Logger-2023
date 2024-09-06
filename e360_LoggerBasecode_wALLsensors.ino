@@ -24,7 +24,7 @@ These 'powers of 2' fit in the I2C buffer AND divide evenly into the EEproms har
 #define logRTC_Temperature                // 1-byte: the RTC's internal 0.25°C resolution temperature sensor
 //#define logCurrentBattery                 // 2-byte: RARELY USED - not 1byte compressed like LowestBattery, primarily included as a powers-of-2 balancing option
 
-#define readNTC_D8pullUprD7ntc            // 2-bytes: ohms // for explanation of the method for reading analog resistance with digital pins see
+//#define readNTC_D8pullUprD7ntc            // 2-bytes: ohms // for explanation of the method for reading analog resistance with digital pins see
 //#define readLDR_onD6                      // 2-bytes: ohms // https://thecavepearlproject.org/2019/03/25/using-arduinos-input-capture-unit-for-high-resolution-sensor-readings/
                                             // these have to match the connections shown in the build lab!
 //#define readSi7051_Temperature            // 2-bytes: often used for NTC calibration - does not require a library, functions for si7051 at end of program
@@ -689,8 +689,10 @@ void loop(){
 #endif //terminates #ifdef PIRtriggersSensorReadings    
  
   if(ECHO_TO_SERIAL){
-      sprintf(CycleTimeStamp, "%04d/%02d/%02d %02d:%02d:%02d", t_year, t_month, t_day, t_hour, t_minute,t_second);
-      Serial.println();Serial.print(F(">Logger woke at: ")); Serial.print(CycleTimeStamp); // sprintf ref:  http://www.perlmonks.org/?node_id=20519
+      Serial.println();Serial.print(F(">Wake: ")); 
+      Serial.print(t_year,DEC);Serial.print(F("/"));Serial.print(t_month,DEC);Serial.print(F("/"));Serial.print(t_day,DEC);
+      Serial.print(F(" "));Serial.print(t_hour,DEC);Serial.print(F(":"));Serial.print(t_minute,DEC);Serial.print(F(":"));Serial.print(t_second,DEC);
+
         #ifndef PIRtriggersSensorReadings
           Serial.print(F(" Next Alarm in: "));
           if (SampleIntervalSeconds > 0){ Serial.print(SampleIntervalSeconds); Serial.print(F("sec")); 
@@ -1406,21 +1408,35 @@ void startMenu_printMenuOptions(){          // note: setup_sendboilerplate2seria
 
   Serial.println();
   RTC_DS3231_getTime();                    // reads current clock time  and display it via CycleTimeStamp
-  sprintf(CycleTimeStamp, "%04d/%02d/%02d %02d:%02d", t_year, t_month, t_day, t_hour, t_minute);  //combines numeric time variables to a human readable text string
-  Serial.print(F("Current Logger time:"));Serial.print(CycleTimeStamp);Serial.print(F(":"));Serial.print(t_second); //seconds separate because usually value is zero
+  Serial.print(t_year,DEC);Serial.print(F("/"));Serial.print(t_month,DEC);Serial.print(F("/"));Serial.print(t_day,DEC);
+  Serial.print(F(" Time: ")); Serial.print(t_hour,DEC);Serial.print(F(":"));Serial.print(t_minute,DEC);
+  Serial.print(F(":"));Serial.print(t_second,DEC); //seconds separate because usually value is zero
   EEPROM.get(4,InternalReferenceConstant); // use .get for multi-byte variables
   Serial.print(F(", VREF: "));Serial.print(InternalReferenceConstant);
   RTCagingOffset = EEPROM.read(10);        // use .read for single-byte reads
-  Serial.print(F(", RTCage:"));Serial.println(RTCagingOffset);
-  if(ECHO_TO_SERIAL){
-  Serial.print(F("Serial output ON"));
-  }else{
-  Serial.print(F("Serial output OFF"));
-  } 
+  Serial.print(F(", RTCage:")); Serial.print(RTCagingOffset);
+  Serial.print(F(", Serial ")); Serial.println(ECHO_TO_SERIAL ? "ON" : "OFF");
   SampleIntervalMinutes = EEPROM.read(8);
   SampleIntervalSeconds = EEPROM.read(9);
-  Serial.print(F(", Interval: "));Serial.print(SampleIntervalMinutes);Serial.print(F("m "));Serial.print(SampleIntervalSeconds);Serial.print(F("s"));
-  Serial.print(F(", Logging: "));
+  if (sensorBytesPerRecord &(sensorBytesPerRecord-1)){    //powers of two check - any non zero result is interpreted as 'true'
+    Serial.print(F("Bytes/record not a PowerOfTwo ->CHANGE sensor the config!"));
+    } else {
+    Serial.print(F("Runtime: "));Serial.print(totalBytesOfEEpromStorage);Serial.print(F("/"));Serial.print(sensorBytesPerRecord);
+    Serial.print(F(" recordBytes @ "));Serial.print(SampleIntervalMinutes);Serial.print(F("m "));
+    Serial.print(SampleIntervalSeconds);Serial.print(F("s = "));
+    floatBuffer = (totalBytesOfEEpromStorage/sensorBytesPerRecord)-64; // # records that can be stored = totalBytesOfEEpromStorage / sensor Bytes needed PerRecord
+    if (SampleIntervalMinutes==0){
+              floatBuffer = floatBuffer*SampleIntervalSeconds;
+              Serial.print(floatBuffer/60,0);Serial.print(F("m or "));
+              Serial.print(floatBuffer/3600,2);Serial.print(F("h"));
+            } else {
+              floatBuffer = floatBuffer*(60UL*SampleIntervalMinutes);
+              Serial.print(floatBuffer/3600,0);Serial.print(F("h or "));
+              Serial.print(floatBuffer/86400,2);Serial.print(F("d"));
+            }     
+      }
+
+  Serial.println();Serial.print(F("Logging: "));
   #ifdef logLowestBattery
         Serial.print(F("LoBat[mv],"));
         #endif
@@ -1457,33 +1473,17 @@ void startMenu_printMenuOptions(){          // note: setup_sendboilerplate2seria
   #ifdef readSi7051_Temperature
         Serial.print(F("SI7051[°C],"));
         #endif
-  Serial.println();
-  
-  if (sensorBytesPerRecord &(sensorBytesPerRecord-1)){  //any non zero result is interpreted as 'true'
-    Serial.print(F("*** BytesPerRecord is not a Power of Two! - CHANGE sensor configuration!"));
-    } else {
-    Serial.print(F("Run time with "));Serial.print(totalBytesOfEEpromStorage);Serial.print(F(" bytes of storage: "));
-    floatBuffer = totalBytesOfEEpromStorage/sensorBytesPerRecord;         // # records that can be stored = totalBytesOfEEpromStorage / sensor Bytes needed PerRecord
-    if (SampleIntervalMinutes==0){                                  // TotalRunTimeInSeconds = #ofRecordsThatCanBeStored * seconds between each reading
-              floatBuffer = floatBuffer*SampleIntervalSeconds;
-              Serial.print(floatBuffer/60,0);Serial.print(F(" min. = "));
-              Serial.print(floatBuffer/3600,2);Serial.print(F(" hours"));
-            } else {
-              floatBuffer = floatBuffer*(60UL*SampleIntervalMinutes);
-              Serial.print(floatBuffer/3600,0);Serial.print(F(" hours = "));
-              Serial.print(floatBuffer/86400,2);Serial.print(F(" days"));
-            }     
-      }   //terminates } else {
-         
-    Serial.println();Serial.println();
-    Serial.print(F("Select one of the following options:"));
-    if (DS3231_PowerLossFlag){ //Oscillator Stop Flag (OSF). A logic 1 in bit7 indicates that the oscillator was stopped for some period due to power loss
-    Serial.print(F("       ***Set the CLOCK!"));}
     Serial.println();
-    Serial.println(F("  [1] DOWNLOAD Data    [2] Set CLOCK       [3] Set INTERVAL"));
-    Serial.println(F("  [4] Deployment info  [5] Logger Details  [6] Cal. Constants"));
-    Serial.println(F("  [7] Toggle Serial    [8] RTC Age Offset  [9] Change Vref"));
-    Serial.println(F("  [10] START logging"));
+       
+    Serial.println();
+    Serial.print(F("Select:"));
+    if(DS3231_PowerLossFlag){ //Oscillator Stop Flag (OSF). A logic 1 in bit7 indicates that the oscillator was stopped for some period due to power loss
+    Serial.print(F("  **Set the CLOCK**"));}
+    Serial.println();
+    Serial.println(F(" [1] DOWNLOAD Data    [2] Set CLOCK       [3] Set INTERVAL"));
+    Serial.println(F(" [4] Deployment info  [5] Logger Details  [6] Cal.Constants"));
+    Serial.println(F(" [7] Toggle Serial    [8] RTC Age Offset  [9] Change Vref"));
+    Serial.println(F(" [10] START logging"));
     if(ECHO_TO_SERIAL){
     Serial.println(F("Debugging/Test options:"));
     Serial.println(F("  [11] Download RAW EEprom bytes  [12] Restore328settingsfromEE"));
