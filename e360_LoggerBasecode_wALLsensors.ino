@@ -40,7 +40,7 @@ These 'powers of 2' fit in the I2C buffer AND divide evenly into the EEproms har
 // 2 LED configurations but LED_r9_b10_g11_gnd12 is the DEFAULT on the e360 logger to enable the PWM lab
 #define LED_r9_b10_g11_gnd12                // enables code for RGB indicator LED //1k limit resistor on shared GND line!
 // alternate:                               // NOTE: Red LED on D13 gets used if both of the above #define statements are commented out
-// #define LED_GndGB_A0_A2                  // For earlier 2-module build with NO breadboards: red channel leg on led cut, A0gnd Green A1, blue A2, default Red on d13 left in place
+//#define LED_GndGB_A0_A2                  // For earlier 2-module build with NO breadboards: red channel leg on led cut, A0gnd Green A1, blue A2, default Red on d13 left in place
 
 //#define countPIReventsPerSampleInterval   // 2-bytes:  saves # of PIR HIGH events in a specified sample interval. Do not enable this with PIRtriggersSensorReadings - choose one or the other
 //#define PIRtriggersSensorReadings         // 4-bytes: Still in beta!   Do not enable this with countPIReventsPerSampleInterval - choose one or the other
@@ -258,7 +258,7 @@ void setup () {
     pinMode(13, INPUT);       // turn of D13 onboard red LED by setting D13 to INPUT & LOW
   #ifdef LED_r9_b10_g11_gnd12                       // we will use INPUT & PULLUP resistor to PIP the leds to reduce current
     for (int i = 9; i <=12; i++) { digitalWrite(i, LOW);  pinMode(i, INPUT); }
-    pinMode(12, OUTPUT);                            //the common ground line on our RGB led must OUTPUT to allow current
+    pinMode(12, OUTPUT);                            // the common ground line on our RGB led must OUTPUT to allow current
   #endif
 
   #ifdef LED_GndGB_A0_A2
@@ -594,27 +594,24 @@ RTC_DS3231_getTime();                     // populates the global variables t_da
 //------------------------------------------------------------------------------
 // FIRST sampling wakeup alarm is already set But instead of simply going to sleep we will use LowPower.powerDown SLEEP_500MS
 // to wake the logger once per second to toggle the LEDs ON/Off so user can tell we are in the sync-delay period before logging starts
-  #if defined(LED_r9_b10_g11_gnd12)               // RED & BLUE leds start in opposite states so they ALTERNATE when toggled by the PIN register
-        digitalWrite(10,LOW);pinMode(10,OUTPUT);  // D10 [Blue] LED Output low   //pinMode(10,INPUT);           for lower current around 50uA
-        digitalWrite(9,HIGH);pinMode(9,OUTPUT);   // D10 [Red] LED outputl high  //pinMode(9,INPUT_PULLUP);     OUTPUT HIGH PULLS 1.5 mA
-  #elif defined(LED_GndGB_A0_A2)
-        pinMode(A2,INPUT);digitalWrite(A2,HIGH);  // A2 [Blue] LED INPUT & PULLUP ON //bitClear(DDRC,2);bitSet(PORTC,2); 
-        pinMode(A1,INPUT);digitalWrite(A1,LOW);   // A1 [Green] LED INPUT & PULLUP OFF //bitClear(DDRC,1);bitClear(PORTC,2);
-        digitalWrite(A0,LOW);pinMode(A0,OUTPUT);  // LED ground enabled // PORTC&= B11111110; DDRC|=B00000001; // A0 LOW (0) & OUTPUT (1) 
+// RED & BLUE leds start in opposite states so they ALTERNATE when toggled by the PIN register
+
+  #if defined(LED_r9_b10_g11_gnd12) || defined(LED_GndGB_A0_A2)
+          turnOnBlueLED(); 
   #else
-        pinMode(13,INPUT);                        // D13 onboard red LED INPUT with PULLUP OFF  
+          pinMode(13,INPUT); // D13 onboard red LED
   #endif
 
   byteBuffer1 = 2;
   do{   // see a ProMini pin map to understand why we are using PINB here for the LED controls https://images.theengineeringprojects.com/image/webp/2018/06/introduction-to-arduino-pro-mini-2.png.webp?ssl=1
-        #if defined(LED_r9_b10_g11_gnd12)         // setting any bits in the 328p PIN control registers to 1 TOGGLES the PULLUP RESISTOR on the associated pins
-          PINB = B00000110;                 // this toggles blue, red led channels with one command
+        #if defined(LED_r9_b10_g11_gnd12)         
+          toggleRedandBlueLEDs();           // toggles [Blue] & [Red] led channels inside the 5mm common cathode LED
         #elif defined(LED_GndGB_A0_A2)
-          PINC = B00000110;                 // TOGGLES A2 [Blue] & A1 [green] PULLUP resistors with pinc write ~50uA
+          toggleBlueAndGreenLEDs();         // This configuration does not have a RED led channel inside the 5mm common cathode LED
         #else
           PINB = B00100000;                 // this toggles ONLY the D13 led // ~50uA to light RED onboard led through D13s internal pullup resistor
         #endif 
-        LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);   //ADC_ON preserves the existing ADC state - if its already off it stays off
+        LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF);   //ADC_ON preserves the existing ADC state - if its already off it stays off
     }while(!rtc_INT0_Flag);                 // sends you back to do{ unless the RTC alarm has triggered
   
   RTC_DS3231_turnOffBothAlarms();           // Note: detachInterrupt(0); already done inside the rtc_d2_alarm_ISR 
@@ -623,15 +620,7 @@ RTC_DS3231_getTime();                     // populates the global variables t_da
 //terminates synchronization time delay -we are now ready to start logging!
 //------------------------------------------------------------------------------------------------------------
 
-  #if defined(LED_r9_b10_g11_gnd12)
-      pinMode(11,INPUT);pinMode(10,INPUT);pinMode(9,INPUT);   // turn all indicators OFF at end of setup
-      digitalWrite(12,LOW);pinMode(12,OUTPUT);                // the common ground line on our RGB led must be OUTPUT to allow current
-  #elif defined(LED_GndGB_A0_A2)
-      bitClear(PORTC,2);                                      // A2 [Blue] LED PULLUP OFF
-      bitClear(PORTC,1);                                      // A1 [Green] LED PULLUP OFF
-  #else
-      pinMode(13,INPUT);                                      // D13 [Onboard Red] indicator LED PULLUP OFF   // bitClear(PORTB,5); would also do this job 
-  #endif
+   turnOffAllindicatorLEDs();
 
   #ifndef logCurrentBattery                //readBattery(); Must be at the end of setup because it disables Serial if ECHO is off
     LowestBattery = readBattery();         //sets starting value for LowBat, but only needed if not logging CurrentBat
@@ -651,6 +640,11 @@ RTC_DS3231_getTime();                     // populates the global variables t_da
 //==========================================================================================
 
 void loop(){
+
+//----------------------------------------------------------------------------------
+// HEARTBEAT LED pip by leaving LED on during sleep delays in next RTC Alarm setting
+//----------------------------------------------------------------------------------
+turnOnGreenLED();
 
 //------------------------------------------------------------------------------- 
 //  *  *  *  *  Set the next RTC wakeup alarm  *  *  *  *  *  *
@@ -700,6 +694,8 @@ void loop(){
         #endif //#ifndef PIRtriggersSensorReadings
       Serial.println();Serial.flush();
     }
+
+toggleBlueAndGreenLEDs(); 
 
   #ifdef logRTC_Temperature
 //------------------------------------------------------------------------------
@@ -810,23 +806,17 @@ void loop(){
     LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF);  //  battery recovery time
 #endif
 
-//----------------------------------------------------------------------------------------
-// HEARTBEAT pip of the LED at the end of the senor readings // each channel draws 30-50uA
-//----------------------------------------------------------------------------------------
-    #if defined(LED_r9_b10_g11_gnd12)     // Colors can be combined for the LED pip but Red is too dim to see with pullup
-      pinMode(11,INPUT_PULLUP);           // Green is brightest
-      pinMode(10,INPUT_PULLUP);           // Blue mixes well with green
-    #elif defined(LED_GndGB_A0_A2)
-      bitClear(DDRC,1); bitSet(PORTC,1);  //same as pinMode(A1,INPUT_PULLUP);, GreenLED = pinMode(A1,INPUT_PULLUP);
-    #else                                 //or use the default red led on D13
-      pinMode(13,INPUT_PULLUP);
-    #endif
+//-----------------------------------------------------
+// Sensor readings finished: turn off the indicator LED 
+//-----------------------------------------------------
+turnOffAllindicatorLEDs();
     
-      LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF);
-      
 //---------------------------------------------------------------------------------
 // Setup ADC to read the coincell voltage DURING the EEprom data save:
 //---------------------------------------------------------------------------------
+    bitClear(DDRB,5);bitSet(PORTB,5); 
+    // pip the red d13 LED INPUT_PULLUP to indicate EEprom memory save event(optional)
+ 
     bitSet(ACSR,ACD); //disable analog comparator ~51µA.
     SPCR = 0; ADCSRA =0; power_all_disable();  
     power_adc_enable(); power_twi_enable(); power_timer0_enable();
@@ -835,18 +825,6 @@ void loop(){
     bitSet(ADCSRA,ADSC);                                                          // triggers a 1st throw-away ADC reading to engauge the Aref cap //1st read takes 20 ADC clock cycles instead of usual 13  
     LowPower.powerDown(SLEEP_15MS, ADC_ON, BOD_OFF);
   // NOTE: Aref capacitor Rise time can take 5-10 milliseconds after starting ADC so 15ms of ADC_ON powerDown sleep works 
-
-//---------------------------
-// turn off the HEARTBEAT pip
-//---------------------------
-    #if defined(LED_r9_b10_g11_gnd12)    // Colors can be combined for the LED pip!
-      pinMode(10,INPUT);                  // D10 [blue] LED pullup Off 
-      pinMode(11,INPUT);                  // D11 [Green] LED pullup Off
-    #elif defined(LED_GndGB_A0_A2)
-      bitClear(PORTC,1);                  // same as pinMode(A1,INPUT);// A1 Green LED: pullup OFF
-    #else
-      pinMode(13,INPUT);                  // pin13 indicator LED pullup Off
-    #endif
 
 //---------------------------------------------------------------------------------
 //  SAVE NEW SENSOR READINGS into EEprom & READ battery after
@@ -1035,11 +1013,11 @@ void loop(){
       // However LowPower.idle fails with 4K eeproms! - even though ONLY IDLE MODE sleeps work with 64k eeproms!
     }
     
-  bitClear(DDRB,5);bitSet(PORTB,5);                     // pip the red D13 LED w INPUT_PULLUP to indicate EEprom memory save(optional)
   LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);     // Cr2032 Battery recovery time: & larger eeproms seem to need some recovery time or RTC alarm wont set
   //Waking the 328p from powerdown sleep takes 16,000 clock cycles (an extra ~2milliseconds @8MHz +60µS if BOD_OFF) and the ProMini draws ~250µA while waiting for the oscillator to stabilize.
-  bitClear(PORTB,5);                                    // D13 red LED: pullup OFF
-  
+
+  bitClear(PORTB,5); // ProMini D13 red LED OFF - this was used to indicate EEprom save event
+
   uint16_Buffer=uint16_Buffer+1;// compensates for very short drop spikes observed on 'scope (with 200uF rail caps)
 #ifdef logLowestBattery 
   LowestBattery = InternalReferenceConstant / uint16_Buffer;
@@ -1214,6 +1192,7 @@ if(ECHO_TO_SERIAL){
 //==========================================================================================
 void sleepNwait4RTCalarm() {                          //NOTE all existing pin states are preserved during sleep
 
+  turnOffAllindicatorLEDs();
   pinMode(2,INPUT);                                   //D2 pullup off - not needed with hardware pullups on RTC module
   noInterrupts();
   bitSet(EIFR,INTF0);                                 // clears interrupt 0's flag bit before attachInterrupt(0,isr,xxxx)
@@ -1243,6 +1222,7 @@ void sleepNwait4D3InterruptORrtcAlarm(){
   // detachInterrupt(X); gets done inside the ISRx for each interrupt which also sets that flag true
   // but the other detachInterrupt(Y); has to be done manually based on those flags
 
+  turnOffAllindicatorLEDs();
   pinMode(2,INPUT);                       //D2 INPUT & pullup not needed due to hardware pullups on RTC module
   pinMode(3,INPUT);                       //D3 INPUT & pullup off - the PIR module is controlling the HIGH/LOW status of this input line
   rtc_INT0_Flag = false;
@@ -2711,3 +2691,105 @@ ISR (TIMER1_OVF_vect) {           // timer1 overflows (every 65536 system clock 
 // ============================================================================================================
 // ============================================================================================================
 
+// Indicator LED functions
+// =======================
+// IF no LED is defined at startup, the default Red ProMini LED on pin13 gets used
+// Colors can be combined for the LED pip but Red 5mm LED is usually too dim to see when lit with pullup(?)
+// Blue mixes well with green but adds another 50uA // Green is brightest // each channel draws 30-50uA
+// ~50uA to light RED onboard led through D13s internal pullup resistor
+// Port B on an Arduino controls digital pins 8–13  //Port C: Controls analog input pins 0–5
+
+void turnOnGreenAndBlueLED(){               // HIGHEST VISIBILITY 'blue-green' pip
+    #if defined(LED_r9_b10_g11_gnd12)
+      bitClear(PORTB,3); bitSet(DDRB,3);    // Common GND       // same as digitalWrite(12,LOW); pinMode(12,OUTPUT);
+      bitClear(DDRB,1);  bitClear(PORTB,1); // D9 [Red] OFF     // same as pinMode(9,INPUT);  digitalWrite(9,LOW); 
+      bitClear(DDRB,2);  bitSet(PORTB,2);   // D10 [Blue] ON    // same as pinMode(10,INPUT); digitalWrite(10,HIGH);
+      bitClear(DDRB,3);  bitSet(PORTB,3);   // D11 [Green] ON   // same as pinMode(11,INPUT); digitalWrite(11,HIGH);
+    #elif defined(LED_GndGB_A0_A2)
+      bitClear(PORTC,0); bitSet(DDRC,0);    // A0 Common GND    // same as digitalWrite(A0,LOW); pinMode(A0,OUTPUT);
+      bitClear(PORTC,1); bitSet(DDRC,1);    // A1 [Green] ON    // same as pinMode(A1,INPUT); digitalWrite(A1,HIGH);
+      bitClear(DDRC,2);  bitSet(PORTC,2);   // A2 [Blue] ON     // same as pinMode(A2,INPUT); digitalWrite(A2,HIGH);
+    #else
+      bitClear(DDRB,5); bitSet(PORTB,5);    // Red ProMini LED on pin13 = ON // same as pinMode(13,INPUT_PULLUP); light default red led on D13
+    #endif
+  } 
+void toggleBlueAndGreenLEDs(){              // Writing a 1 to any bits in the PIN control register TOGGLES the PULLUP RESISTOR on the associated pins
+    #if defined(LED_r9_b10_g11_gnd12)       
+      PINB = B00001100;                     // TOGGLES D10[Blue] pullup & D11[green] PULLUP resistors
+    #elif defined(LED_GndGB_A0_A2)
+      PINC = B00000110;                     // TOGGLES A2 [Blue] & A1 [green] PULLUP resistors
+    #else
+      PINB = B00100000;                     // TOGGLES [Red] ProMini LED PULLUP resistor
+    #endif
+  }
+  
+void turnOnRedAndBlueLED(){
+    #if defined(LED_r9_b10_g11_gnd12)       // 'purple' in this configuration
+      bitClear(PORTB,3); bitSet(DDRB,3);    // Common GND       // same as digitalWrite(12,LOW); pinMode(12,OUTPUT);
+      bitClear(DDRB,1);  bitSet(PORTB,1);   // D9 [Red] ON      // same as pinMode(9,INPUT);  digitalWrite(9,HIGH); 
+      bitClear(DDRB,2);  bitSet(PORTB,2);   // D10 [Blue] ON    // same as pinMode(10,INPUT); digitalWrite(10,HIGH);
+      bitClear(DDRB,3);  bitClear(PORTB,3); // D11 [Green] OFF  // same as pinMode(11,INPUT); digitalWrite(11,LOW);
+    #elif defined(LED_GndGB_A0_A2)          // this configuration does not have RED channel embedded inside the 5mm LED!
+      bitClear(PORTC,0); bitSet(DDRC,0);    // A0 Common GND    // same as digitalWrite(A0,LOW); pinMode(A0,OUTPUT);
+      bitClear(PORTC,1); bitClear(DDRC,1);  // A1 [Green] OFF   // same as pinMode(A1,INPUT); digitalWrite(A1,LOW);
+      bitClear(DDRC,2);  bitSet(PORTC,2);   // A2 [Blue] ON     // same as pinMode(A2,INPUT); digitalWrite(A2,HIGH);
+      bitClear(DDRB,5);  bitSet(PORTB,5);   // Red ProMini LED on pin13 = ON // same as pinMode(13,INPUT_PULLUP); light default red led on D13
+    #else
+      bitClear(DDRB,5);  bitSet(PORTB,5);   // Red ProMini LED on pin13 = ON // same as pinMode(13,INPUT_PULLUP); light default red led on D13
+    #endif
+  }
+void toggleRedandBlueLEDs(){                // Writing a 1 to any bit in PIN control register TOGGLES the PULLUP RESISTOR on the associated pins
+    #if defined(LED_r9_b10_g11_gnd12)       
+      PINB = B00000110;                     // TOGGLES D10[Blue] pullup & D9 [Red]PULLUP resistors
+    #elif defined(LED_GndGB_A0_A2)
+      PINC = B00000100;                     // TOGGLES A2 [Blue] PULLUP resistors [in 5mm RBG]
+      PINB = B00100000;                     // TOGGLES [Red] ProMini LED PULLUP resistor [on ProMini]
+    #else
+      PINB = B00100000;                     // TOGGLES [Red] ProMini LED PULLUP resistor
+    #endif
+  }
+   
+void turnOnGreenLED(){
+    #if defined(LED_r9_b10_g11_gnd12)
+      bitClear(PORTB,3); bitSet(DDRB,3);    // Common GND       // same as digitalWrite(12,LOW); pinMode(12,OUTPUT);
+      bitClear(DDRB,1);  bitClear(PORTB,1); // D9 [Red]   OFF   // same as pinMode(9,INPUT);  digitalWrite(9,LOW);
+      bitClear(DDRB,2);  bitClear(PORTB,2); // D10 [Blue] OFF   // same as pinMode(10,INPUT); digitalWrite(10,LOW );
+      bitClear(DDRB,3);  bitSet(PORTB,3);   // D11 [Green] ON   // same as pinMode(11,INPUT); digitalWrite(11,HIGH);
+    #elif defined(LED_GndGB_A0_A2)
+      bitClear(PORTC,0); bitSet(DDRC,0);    // A0 Common GND    // same as digitalWrite(A0,LOW); pinMode(A0,OUTPUT);
+      bitSet(DDRC,1);    bitSet(PORTC,1);   // A1 [Green] ON    // same as pinMode(A1,INPUT); digitalWrite(A1,HIGH);
+      bitClear(DDRC,2);  bitClear(PORTC,2); // A2 [Blue] OFF    // same as pinMode(A1,INPUT); digitalWrite(A1,LOW);
+    #else
+      bitClear(DDRB,5);  bitSet(PORTB,5);   // Red ProMini LED on pin13 = ON // same as pinMode(13,INPUT_PULLUP); light default red led on D13
+    #endif
+  } 
+  
+void turnOnBlueLED(){
+    #if defined(LED_r9_b10_g11_gnd12)
+      bitClear(PORTB,3); bitSet(DDRB,3);    // Common GND       // same as digitalWrite(12,LOW); pinMode(12,OUTPUT);
+      bitClear(DDRB,1);  bitClear(PORTB,1); // D11 [Red] OFF    // same as pinMode(9,INPUT);  digitalWrite(9,LOW);
+      bitClear(DDRB,2);  bitSet(PORTB,2);   // D10 [Blue] ON    // same as pinMode(10,INPUT); digitalWrite(10,HIGH);
+      bitClear(DDRB,3);  bitClear(PORTB,3); // D11 [Green] OFF  // same as pinMode(11,INPUT); digitalWrite(11,LOW);
+ 
+    #elif defined(LED_GndGB_A0_A2)
+      bitClear(PORTC,0); bitSet(DDRC,0);    // A0 Common GND    // same as digitalWrite(A0,LOW); pinMode(A0,OUTPUT);
+      bitClear(DDRC,1);  bitClear(PORTC,1); // A1 [green] OFF   // same as pinMode(A1,INPUT); digitalWrite(A1,LOW);
+      bitClear(DDRC,2);  bitSet(PORTC,2);   // A2 [Blue] ON     // same as pinMode(A2,INPUT); digitalWrite(A2,HIGH);
+    #else
+      bitClear(DDRB,5); bitSet(PORTB,5);    // Red ProMini LED on pin13 = ON // same as pinMode(13,INPUT_PULLUP); light default red led on D13
+    #endif
+  }    
+
+// turnOnRedLED not done because it's too dim to see - use the [Red] ProMini LED instead
+
+void turnOffAllindicatorLEDs(){
+    #if defined(LED_r9_b10_g11_gnd12)
+      bitClear(PORTB,1); bitClear(DDRB,1);  // D11 [Red]    OFF  // same as pinMode(9,INPUT);
+      bitClear(PORTB,2); bitClear(DDRB,2);  // D10 [Blue]   OFF  // same as pinMode(10,INPUT);
+      bitClear(PORTB,3); bitClear(DDRB,3);  // D11 [Green]  OFF  // same as pinMode(11,INPUT);
+    #elif defined(LED_GndGB_A0_A2)
+      bitClear(PORTC,1); bitClear(DDRC,1);  // A1 [green] OFF // same as pinMode(A1,INPUT); digitalWrite(A1,LOW);
+      bitClear(PORTC,2); bitClear(DDRC,2);  // A2 [Blue]  OFF // same as pinMode(A2,INPUT); digitalWrite(A2,LOW);
+   #endif
+      bitClear(PORTB,5);                    // [Red] ProMini LED OFF // same as pinMode(13,INPUT); 
+  }
