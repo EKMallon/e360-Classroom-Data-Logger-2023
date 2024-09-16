@@ -2757,7 +2757,7 @@ void turnOnGreenLED(){
       bitClear(DDRB,3);  bitSet(PORTB,3);   // D11 [Green] ON   // same as pinMode(11,INPUT); digitalWrite(11,HIGH);
     #elif defined(LED_GndGB_A0_A2)
       bitClear(PORTC,0); bitSet(DDRC,0);    // A0 Common GND    // same as digitalWrite(A0,LOW); pinMode(A0,OUTPUT);
-      bitSet(DDRC,1);    bitSet(PORTC,1);   // A1 [Green] ON    // same as pinMode(A1,INPUT); digitalWrite(A1,HIGH);
+      bitClear(DDRC,1);  bitSet(PORTC,1);   // A1 [Green] ON    // same as pinMode(A1,INPUT); digitalWrite(A1,HIGH);
       bitClear(DDRC,2);  bitClear(PORTC,2); // A2 [Blue] OFF    // same as pinMode(A1,INPUT); digitalWrite(A1,LOW);
     #else
       bitClear(DDRB,5);  bitSet(PORTB,5);   // Red ProMini LED on pin13 = ON // same as pinMode(13,INPUT_PULLUP); light default red led on D13
