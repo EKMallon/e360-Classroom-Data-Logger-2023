@@ -37,9 +37,9 @@ These 'powers of 2' fit in the I2C buffer AND divide evenly into the EEproms har
 
 //#define OLED_64x32_SSD1306                // not a sensor, but enabled with define to include needed library - requires 1000uF rail capacitor!-
 
-// 2 LED configurations but LED_r9_b10_g11_gnd12 is the DEFAULT on the e360 logger to enable the PWM lab
+// LED_r9_b10_g11_gnd12 is the DEFAULT on the e360 logger to enable the PWM lab
+// alternate: // NOTE: Red LED on D13 gets used if both of the above #define statements are commented out
 #define LED_r9_b10_g11_gnd12                // enables code for RGB indicator LED //1k limit resistor on shared GND line!
-// alternate:                               // NOTE: Red LED on D13 gets used if both of the above #define statements are commented out
 //#define LED_GndGB_A0_A2                  // For earlier 2-module build with NO breadboards: red channel leg on led cut, A0gnd Green A1, blue A2, default Red on d13 left in place
 
 //#define countPIReventsPerSampleInterval   // 2-bytes:  saves # of PIR HIGH events in a specified sample interval. Do not enable this with PIRtriggersSensorReadings - choose one or the other
@@ -142,12 +142,12 @@ volatile boolean d3_INT1_Flag = false;
 
 #ifdef readNTC_D8pullUprD7ntc 
 //------------------
-  uint32_t NTC_NewReading;                // max of 65535 limits our ability to measure 10kNTC at temps below zero C!
+  uint16_t NTC_NewReading;                // max of 65535 limits our ability to measure 10kNTC at temps below zero C!
 #endif
 
 #ifdef readLDR_onD6 
 //------------------
-  uint32_t LDR_NewReading;                // 65535 limit
+  uint16_t LDR_NewReading;                // NOTE this OVERFLOWS if resistance > 65535
 #endif
 #if defined(readNTC_D8pullUprD7ntc) || defined(readLDR_onD6)
 //------------------------------------------------
@@ -316,7 +316,7 @@ void setup () {
 
   //DS3231 does not have any non-volatile memory so all of the internal registers reset to default if power is lost - so we store this in the 328p eeprom
   RTCagingOffset = EEPROM.read(10);                             // int8_t can store from -127 to +128
-      if((RTCagingOffset<-100) || (RTCagingOffset>100)){        // if value stored in eeprom is outside normal operating parameters
+      if((RTCagingOffset<-128) || (RTCagingOffset>127)){        // if value stored in eeprom is outside normal operating parameters
         RTCagingOffset=0;                                       // then resets it to the 0 default 
         EEPROM.update(10,0);                                    // and store that default back in the eeprom
         }
@@ -788,7 +788,7 @@ toggleBlueAndGreenLEDs();
 #ifdef readBMP_Pressure
   bmp280.getCurrentPressure(Bmp280_Pr_mBar);
   LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);
-  if(ECHO_TO_SERIAL){ Serial.print(F(", b280 Pr. "));Serial.print(Bmp280_Pr_mBar,2); Serial.print(F(" hPa")); }
+  if(ECHO_TO_SERIAL){ Serial.print(F(", b280 Pr. "));Serial.print(Bmp280_Pr_mBar,2); Serial.print(F(" hPa"));}
 #endif
 
 #ifdef recordBMPaltitude
@@ -796,6 +796,10 @@ toggleBlueAndGreenLEDs();
     if(ECHO_TO_SERIAL){ Serial.print(F(", b280 Alt. ")); Serial.print(Bmp280_altitude_m,2); Serial.print(F(" m,")); }
 #endif
 // to read all three at the same time: bmp280.getCurrentMeasurements(Bmp280_Temp_degC, Bmp280_Pr_mBar, Bmp280_altitude_m); //function returns 1 if readings OK
+
+#if defined(readBMP_Temperature) || defined(readBMP_Pressure) || defined(recordBMPaltitude) //  '||' means 'OR'
+  if(ECHO_TO_SERIAL){ Serial.flush();}
+#endif
 
 #ifdef readSi7051_Temperature
 //------------------------------------------------------------------------------
@@ -1487,11 +1491,11 @@ void startMenu_listEnabledSensors(){
 void startMenu_setRTCageOffset(){                           //default = 0 
 //-----------------------------------------------------------------------------------------
 do {
-    Serial.println(F("Input a new RTC aging Offset between -99 and +99:"));
+    Serial.println(F("Input a new RTC aging Offset between -128 and +127:"));
     Serial.setTimeout(100000);                              // parseInt will normally “time out” after default set point is 1 second (1000 milliseconds).
     while (Serial.available() != 0 ) {Serial.read();}       // clears the serial buffer  
     RTCagingOffset = Serial.parseInt();          //parseInt() actually returns a long
-     } while((RTCagingOffset<-100) || (RTCagingOffset>100));  // if condition fails & you have to re-enter the number
+     } while((RTCagingOffset<-128) || (RTCagingOffset>127));  // if condition fails & you have to re-enter the number
 
    // dont need to convert twos complement? because int8_t ALREADY IS??
    EEPROM.put(10,RTCagingOffset); // every time you run the logger it will retrieve this and load it into the RTC 
