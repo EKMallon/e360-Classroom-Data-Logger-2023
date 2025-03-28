@@ -19,7 +19,7 @@ These 'powers of 2' fit in the I2C buffer AND divide evenly into the EEproms har
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++   
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-// LowestBattery & RTC_Temperature are the 2 byte 'base values' which are generally recorded with every sensor reading (as they require no extra sensor hardware beyond the logger itself)
+// LowestBattery & RTC_Temperature are the 2 byte 'base values' which are usually recorded with every sensor reading (as they require no extra sensor hardware beyond the logger itself)
 #define logLowestBattery                  // 1-byte (compressed): saves LowestBattery recorded during operation
 #define logRTC_Temperature                // 1-byte: the RTC's internal 0.25°C resolution temperature sensor
 //#define logCurrentBattery                 // 2-byte: RARELY USED - not 1byte compressed like LowestBattery, primarily included as a powers-of-2 balancing option
@@ -31,13 +31,16 @@ These 'powers of 2' fit in the I2C buffer AND divide evenly into the EEproms har
 
 //#define readBh1750_LUX                    // 2-bytes: raw sensor output: gets converted to Lux during download
 
+//#define readSht3x_Temperature             // 2-bytes
+//#define readSht3x_Humidity                // 2-bytes
+
 // IF you enable all three BME  or BMP outputs, you will need two more bytes for an 8-byte record: try adding logLowestBattery & logRTC_Temperature 
 //#define readBMP280_Temperature            // 2-bytes
 //#define readBMP280_Pressure               // 2-bytes
-//#define recordBMP280_Altitude              // 2-bytes: calculated by library
+//#define recordBMP280_Altitude             // 2-bytes: calculated by library
 
-//#define recordBMEtemp_2byteInt            // 2-byte NOTE: works with BMP & BME
-//#define recordBMEpressure_2byteInt        // 2-byte NOTE: works with BMP & BME
+//#define recordBMEtemp_2byteInt            // 2-byte NOTE: works with both BMP & BME
+//#define recordBMEpressure_2byteInt        // 2-byte NOTE: works with both BMP & BME
 //#define recordBMEhumidity_2byteInt        // 2-byte ONLY if BME 280 connected!
 
 //#define OLED_64x32_SSD1306                // not a sensor, but enabled with define to include needed library - requires 1000uF rail capacitor!-
@@ -169,6 +172,21 @@ volatile boolean d3_INT1_Flag = false;
   #define Bh1750_Address 0x23
 #endif
 
+#if defined(readSht3x_Temperature) || defined(readSht3x_Humidity)
+//---------------------------------------------------------------
+// https://sensirion.com/media/documents/213E6A3B/63A5A569/Datasheet_SHT3x_DIS.pdf
+// SHT30 Accuracy ±0.2°C, ±2%RH, Sht30 resolution is only: 0.01°C and 0.01 %RH
+// idle state(single shot mode@3v) 0.2uA,  Supply current Measuring 600uA, Heater power 33mW 
+// Soft reset time 1.5 ms, Measurement duration 15 ms (slow)  4 ms (fast)
+// The SHT85 is protocol in this library is compatible with the SHT3x series of sensors
+
+  #include <SHT85.h> // https://github.com/RobTillaart/SHT85/tree/master
+  #define ShtRH_ADDRESS   0x44              // two address options: 0x44 & 0x45
+  float Sht3x_Temp_degC,Sht3x_RH_percent;
+  SHT85 sht3x(ShtRH_ADDRESS);
+  //uint16_t Sht3x_Temp_RawInt,Sht3x_RH_RawInt; //library also supports raw integer output
+#endif
+
 #if defined(readBMP280_Temperature) || defined(readBMP280_Pressure) || defined(recordBMP280_Altitude)
 //-----------------------------------------------------------------------------------
   #include <BMP280_DEV.h>                 // Include the BMP280_DEV.h library  // NOTE: this library has disappeared from github?
@@ -252,6 +270,13 @@ void setup () {
 
   #ifdef readBh1750_LUX
     sensorBytesPerRecord = sensorBytesPerRecord + 2;           // two-byte integer for RAW reading before conversion to lux
+  #endif
+
+  #ifdef readSht3x_Temperature
+    sensorBytesPerRecord = sensorBytesPerRecord + 2;            // two-byte integer 
+  #endif
+  #ifdef readSht3x_Humidity
+    sensorBytesPerRecord = sensorBytesPerRecord + 2;            // two-byte integer 
   #endif
   
   #ifdef readBMP280_Temperature
@@ -476,6 +501,43 @@ Serial.print(F("Initializing sensors: "));Serial.flush();
       // QUALITY_LOW  -Resolution Mode Measurement Time 16-24 msec //LOW MTreg:31  resolution lux:7.4, 121557 is highest lux
   Serial.print(F("BH1750 started,"));Serial.flush();
 #endif // terminates bh1750 init.
+
+// Sht3x initialization
+//-----------------------
+#if defined(readSht3x_Temperature) || defined(readSht3x_Humidity)
+//---------------------------------------------------------------
+  sht3x.begin(); 
+  Serial.print(F("Starting Sht3x"));Serial.flush();
+  
+  // first reading should be done slowly with (false)
+  sht3x.requestData(false);  //default () = fast = true blocks 4 (fast) or 15 (slow) milliseconds 
+  LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF); // + an extra 2msec to wakeup
+  do{ booleanBuffer = sht3x.dataReady(false); }while(!booleanBuffer); //wait for data ready - this only checks if enough time has passed to read the data. (15 milliseconds)
+  sht3x.readData(false);      
+  // default () = fast = true blocks 4 (fast) or 15 milliseconds if false = slow
+  // The parameter true/false should be the same in requestData() and dataReady()
+  Sht3x_Temp_degC = sht3x.getTemperature();
+  Sht3x_RH_percent = sht3x.getHumidity();
+  Serial.print(F(" RH%: "));Serial.print(Sht3x_RH_percent,2);  
+  Serial.print(F(" T[°C]: "));Serial.print(Sht3x_Temp_degC,2);
+  Serial.println();Serial.flush();
+
+  //alternatively:
+  //Sht3x_RH_RawInt= sht3x.getRawHumidity();  //raw two-byte representation of humidity directly from the sensor
+  //Sht3x_Temp_RawInt = sht3x.getRawTemperature(); //raw two-byte representation of temperature directly from the sensor
+  //Sht3x_RH_percent = Sht3x_RH_RawInt * (100.0 / 65535);
+  //Sht3x_Temp_degC = Sht3x_Temp_RawInt * (175.0 / 65535) - 45;
+
+  // OTHER commands: from https://github.com/RobTillaart/SHT85/tree/master
+  // sht3x.setTemperatureOffset( );  // Offset is defined in degrees Celsius.
+  // sht3x.setHumidityOffset( );     // Default offsets are zero for both temperature and humidity. 
+  // These functions allows one to adjust them a little. Note there is no limit to the offset so one can use huge values. This allows to use an offset of 273.15 effectively creating °Kelvin instead of Celsius.
+  // sht3x.reset(); //(bool hard = false) resets the sensor, soft reset by default. Returns false if it fails.
+  // sht3x.heatOff();   
+  // uint16_t stat = sht3x.readStatus();Serial.print(F("Status: \t"));Serial.println(stat, HEX);
+  // uint32_t ser = sht3x.GetSerialNumber();Serial.print(F("Serial Num: \t"));Serial.println(ser, HEX);
+  // Serial.print(F("LIB_VERSION: \t"));Serial.println(SHT_LIB_VERSION); Serial.flush();
+#endif
 
 // BMP280 initialization
 //-----------------------
@@ -815,6 +877,37 @@ toggleBlueAndGreenLEDs();
     }
 #endif //readBh1750_LUX
 
+
+//read Sht3x RH sensor
+#if defined(readSht3x_Temperature) || defined(readSht3x_Humidity)
+//---------------------------------------------------------------
+  sht3x.requestData(); //defaults() to fast 4msec read
+  LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);
+  do{ booleanBuffer = sht3x.dataReady(); }while(!booleanBuffer);
+  sht3x.readData();
+#endif
+  
+#ifdef readSht3x_Humidity
+  Sht3x_RH_percent = sht3x.getHumidity();
+  //OR: Sht3x_RH_RawInt= getRawHumidity();  //raw two-byte representation of humidity directly from the sensor
+  //Sht3x_RH_percent = Sht3x_RH_RawInt * (100.0 / 65535);
+  if(ECHO_TO_SERIAL){
+    Serial.print(F(", Sht3x RH: ")); Serial.print(Sht3x_RH_percent,2); Serial.print(F(" %")); }
+#endif
+  
+#ifdef readSht3x_Temperature 
+  Sht3x_Temp_degC = sht3x.getTemperature();
+  //OR: Sht3x_Temp_RawInt = getRawTemperature(); //raw two-byte representation of temperature directly from the sensor
+  //Sht3x_Temp_degC = Sht3x_Temp_RawInt * (175.0 / 65535) - 45;
+  if(ECHO_TO_SERIAL){
+    Serial.print(F(", Sht3x Temp: ")); Serial.print(Sht3x_Temp_degC,2); Serial.print(F(" °C")); }
+#endif
+
+#if defined(readSht3x_Temperature) || defined(readSht3x_Humidity)
+    if(ECHO_TO_SERIAL){Serial.println();Serial.flush();}
+#endif
+
+
 // read bmp280 sensor
 //-------------------
 #if defined(readBMP280_Temperature) || defined(readBMP280_Pressure) || defined(recordBMP280_Altitude) //  '||' means 'OR'
@@ -1005,10 +1098,31 @@ turnOffAllindicatorLEDs();
         Wire.write(hiByte);  
 #endif // #ifdef readBh1750_LUX
 
+#ifdef readSht3x_Humidity
+  //Sht30 resolution is only: 0.01°C and 0.01 %RH so only need two decimal places
+  Sht3x_RH_percent = Sht3x_RH_percent*100.00;   // convert float reading to integer preserving two decimal places
+  int16_Buffer = (int16_t)Sht3x_RH_percent;  
+  loByte = lowByte(int16_Buffer);               // first byte of record gets checked by 
+  //if(loByte<1){loByte=1;}                     // if needed to preserve zero EOF indicator in 'empty' EEprom space if single sensor
+        Wire.write(loByte);
+  hiByte = highByte(int16_Buffer);
+        Wire.write(hiByte);  
+#endif
+
+#ifdef readSht3x_Temperature                    // Sht30 resolution is only: 0.01°C and 0.01%RH
+  Sht3x_Temp_degC = Sht3x_Temp_degC*100.00;     // convert float reading to integer preserving two decimal places
+  int16_Buffer = (int16_t)Sht3x_Temp_degC;  
+  loByte = lowByte(int16_Buffer);               // first byte of record gets checked by 
+  //if(loByte<1){loByte=1;}                     // to preserve zero EOF indicator in 'empty' EEprom space if single sensor
+        Wire.write(loByte);
+  hiByte = highByte(int16_Buffer);
+        Wire.write(hiByte); 
+#endif
+
 #ifdef readBMP280_Temperature
   Bmp280_Temp_degC = Bmp280_Temp_degC*100.00;   //convert float reading to integer preserving two decimal places
   int16_Buffer = (int16_t)Bmp280_Temp_degC;  
-  loByte = lowByte(int16_Buffer);              // first byte of record gets checked by 
+  loByte = lowByte(int16_Buffer);               // first byte of record gets checked by 
   //if(loByte<1){loByte=1;}                     // to preserve zero EOF indicator in 'empty' EEprom space
         Wire.write(loByte);
   hiByte = highByte(int16_Buffer);
@@ -1396,19 +1510,20 @@ void setup_sendboilerplate2serialMonitor(){
 //  next 311-511 =200 bytes for deployment description
 //  remaining 512 to 1023 = 255 bytes for fonts (?) on loggers with OLED screens although those could also be stored in progmem?
 
-    char OnecharBuffer;
-    // retrieve & send 100 character hardware details stored in 328p internal eeprom 
+    char OnecharBuffer; // retrieve & send 100 character info fields stored in 328p internal eeprom 
     Serial.print(F("Logger:,")); //Serial.println((__FlashStringHelper*)loggerConfiguration);
     for (uint16_t k = 64; k < 165; k++) { OnecharBuffer = EEPROM.read(k); Serial.print(OnecharBuffer); }
     Serial.println();
 
-    // retrieve & send 100 character calibration constants stored in 328p internal eeprom
-    Serial.print(F("Calibration:,"));
+    Serial.print(F("Calibrated:,"));
     for (uint16_t k = 266; k < 367; k++) { OnecharBuffer = EEPROM.read(k); Serial.print(OnecharBuffer); }
     Serial.println();
+
+    Serial.print(F("Normalized:,"));
+    for (uint16_t k = 366; k < 467; k++) { OnecharBuffer = EEPROM.read(k); Serial.print(OnecharBuffer); }
+    Serial.println();
   
-    // retrieve & send 100 character deployment description stored in 328p internal eeprom
-    Serial.print(F("Last Deployment:,"));
+    Serial.print(F("Deployment:,"));
     for (uint16_t k = 165; k < 266; k++) { OnecharBuffer = EEPROM.read(k); Serial.print(OnecharBuffer); }
     Serial.println();
         
@@ -1443,34 +1558,37 @@ void setup_displayStartMenu() {
               startMenu_setSampleInterval(); Serial.setTimeout(1000); 
               displayMenuAgain=true;  break;
             case 4:
-              startMenu_updateDeploymentInfo(); Serial.setTimeout(1000);
-              displayMenuAgain=true;  break;
+              startMenu_updateLoggerInfoField(2,165,265); // updateDeploymentInfo  (SwitchText,EEstart,EEend)
+              Serial.setTimeout(1000); displayMenuAgain=true; break;
             case 5:
-              startMenu_updateLoggerInfo(); Serial.setTimeout(1000);
-              displayMenuAgain=true;  break;
+              startMenu_updateLoggerInfoField(1,64,164);  // updateLoggerInfo 
+              Serial.setTimeout(1000); displayMenuAgain=true; break;
             case 6:
-              startMenu_updateCalibrationConstants(); Serial.setTimeout(1000);
-              displayMenuAgain=true;  break;
+              startMenu_updateLoggerInfoField(3,266,366); // updateCalibrationInfo 
+              Serial.setTimeout(1000); displayMenuAgain=true; break;
             case 7:
-              ECHO_TO_SERIAL = !ECHO_TO_SERIAL;             // toggles the boolean true/false variable
-              displayMenuAgain=true;  break;    
+              startMenu_updateLoggerInfoField(4,367,467); // updateNormalizationInfo
+              Serial.setTimeout(1000); displayMenuAgain=true; break; 
             case 8:
               startMenu_setRTCageOffset(); Serial.setTimeout(1000);
               displayMenuAgain=true;  break; 
             case 9:
               startMenu_setVrefConstant(); Serial.setTimeout(1000);
-              displayMenuAgain=true;  break;         
-            case 10:                                        // starts logger option
+              displayMenuAgain=true;  break; 
+            case 10:
+              ECHO_TO_SERIAL = !ECHO_TO_SERIAL;             // toggles the boolean true/false variable
+              displayMenuAgain=true;  break;                    
+            case 11:                                        // starts logger option
               wait4input=false; break;                      // wait4input=false breaks you out of the switch-case loop & sends you back to Setup function where displayStartMenu was first called
 
             // HIDDEN debugging options that are not displayed in the startmenu unless SERIAL turned ON
-            case 11: 
+            case 12: 
               startMenu_sendData2Serial(false);  
               displayMenuAgain=true;  break;
-            case 12:          
+            case 13:          
               startMenu_restoreStartValuesFromBackup(); Serial.setTimeout(1000);    // a 'hidden' option NOT DISPLAYED in the startmenu
               displayMenuAgain=true;  break;                // restores startup parameters from 64byte backup on external eeprom - useful if you have to replace a dead promini          
-            case 13: 
+            case 14: 
               error_shutdown();                             // leaving the RTC oscilator running
               
             default:                                      // Check milliseconds elapsed & send logger into shutdown if we've waited too long
@@ -1496,7 +1614,7 @@ void startMenu_printMenuOptions(){          // note: setup_sendboilerplate2seria
   Serial.print(F(", VREF: "));Serial.print(InternalReferenceConstant);
   RTCagingOffset = EEPROM.read(10);        // use .read for single-byte reads
   Serial.print(F(", RTCage:")); Serial.print(RTCagingOffset);
-  Serial.print(F(", Serial ")); Serial.println(ECHO_TO_SERIAL ? "ON" : "OFF");
+  Serial.print(F(", Serial Output:")); Serial.println(ECHO_TO_SERIAL ? "ON" : "OFF");
   SampleIntervalMinutes = EEPROM.read(8);
   SampleIntervalSeconds = EEPROM.read(9);
 
@@ -1511,7 +1629,8 @@ void startMenu_printMenuOptions(){          // note: setup_sendboilerplate2seria
     Serial.print(F(" bytes per record @ "));
     if (SampleIntervalMinutes==0){Serial.print(SampleIntervalSeconds);Serial.print(F("sec"));
     }else{Serial.print(SampleIntervalMinutes);Serial.print(F("min"));} Serial.print(F(" interval = "));
-    floatBuffer = (totalBytesOfEEpromStorage/sensorBytesPerRecord)-64; //64bytes reserved for bkup // # records that can be stored = totalBytesOfEEpromStorage / sensor Bytes needed PerRecord
+    floatBuffer = (totalBytesOfEEpromStorage/sensorBytesPerRecord)-64; 
+    //NOTE: 64bytes reserved for parameter bkup // # records that can be stored = totalBytesOfEEpromStorage / sensor Bytes needed PerRecord
     if (SampleIntervalMinutes==0){
               floatBuffer = floatBuffer*SampleIntervalSeconds;
               Serial.print(floatBuffer/60,0);Serial.print(F("m or "));
@@ -1529,12 +1648,12 @@ void startMenu_printMenuOptions(){          // note: setup_sendboilerplate2seria
     Serial.println();
     Serial.println(F(" [1] DOWNLOAD Data    [2] Set CLOCK       [3] Set INTERVAL"));
     Serial.println(F(" [4] Deployment info  [5] Logger Details  [6] Cal.Constants"));
-    Serial.println(F(" [7] Toggle Serial    [8] RTC Age Offset  [9] Change Vref"));
-    Serial.println(F(" [10] START logging"));
+    Serial.println(F(" [7] Norm.Constants   [8] RTC Age Offset  [9] Set Vref"));
+    Serial.println(F(" [10] Serial Output   [11] START logging"));
     if(ECHO_TO_SERIAL){
     Serial.println(F("Debugging/Test options:"));
-    Serial.println(F(" [11] Download RAW EEprom bytes  [12] Restore328settingsfromEE"));
-    Serial.println(F(" [13] SHUTDOWN logger"));
+    Serial.println(F(" [12] Download RAW EEprom bytes  [13] Restore328settingsfromEE"));
+    Serial.println(F(" [14] SHUTDOWN logger"));
     }
     Serial.println(); Serial.flush();
 }   //terminates startMenu_printMenuOptions
@@ -1565,6 +1684,12 @@ void startMenu_listEnabledSensors(){
   #ifdef readBh1750_LUX
         Serial.print(F("Bh1750[Lux],"));
         #endif
+  #ifdef readSht3x_Humidity
+        Serial.print(F("Sht3x[RH%],"));
+        #endif
+  #ifdef readSht3x_Temperature
+        Serial.print(F("Sht3x[T°C],"));
+        #endif 
   #ifdef readBMP280_Temperature
         Serial.print(F("b280[T°C],"));
       #endif
@@ -1625,7 +1750,7 @@ do {
 void startMenu_setSampleInterval(){
 //-----------------------------------------------------------------------------------------
 do {
-    Serial.println();Serial.println(F("Input a sampling interval of 1,2,5,10,15,20,30 or [0] minutes:"));
+    Serial.println();Serial.println(F("Input a sampling interval of 1,2,5,10,15,20,30,60 or [0] minutes:"));
     byteBuffer1 = 0;  while (Serial.available() != 0 ) {Serial.read();}   // clears the serial buffer  
     Serial.setTimeout(100000); SampleIntervalMinutes = Serial.parseInt(); 
     byteBuffer1 = SampleIntervalMinutes ? 60 % SampleIntervalMinutes : 0; // ERROR check: input must be valid divisor of 60 OR zero
@@ -1687,6 +1812,88 @@ void startMenu_setRTCtime(){
     DS3231_PowerLossFlag=false;
     }   //terminates if (set_t_month==0 && set_t_day==0){
 }
+
+void startMenu_updateLoggerInfoField(uint8_t switchText,uint16_t EEstart,uint16_t EEend){
+//----------------------------------------------------------------------------------------------------
+// Serial input method from Example 3  https://forum.arduino.cc/t/serial-input-basics-updated/382007
+//----------------------------------------------------------------------------------------------------
+Serial.print(F("Type < "));
+switch (switchText) {
+            case 1:
+              Serial.print(F("Logger Config"));break;
+            case 2:
+              Serial.print(F("Deploy Location"));break;
+            case 3:
+              Serial.print(F("CalDate,constants"));break;
+            case 4:
+              Serial.print(F("NormDate,constants"));break;
+            default:
+              Serial.print(F("-Err-"));break;
+              break;
+             }    //  terminates switch-case cascade 
+Serial.println(F(" > with '<'&'>' ends +[Enter]"));
+
+Serial.println(F(" < MAX 100 chars >  [Timeout: 200sec]"));
+while(Serial.available()) { byteBuffer1 = Serial.read();}   // clears any leftover bytes in serial buffer
+//Serial.setTimeout(100000); not needed here?
+
+byteBuffer1 = 0; // counts the # of receivedChars // Char is signed and that Byte is unsigned.
+boolean newData = false;
+boolean recvInProgress = false;
+char startMarker = '<';
+char endMarker = '>';
+char rc; //incoming character
+byte numChars = 101;  //sets maximum number of characters that can be recieved
+char receivedChars[numChars];
+
+uint32_t startMillis = millis();
+do {   // timeout do-while loop
+
+   while (Serial.available() > 0 && newData == false) {
+        rc = Serial.read();
+
+        if (recvInProgress == true) {
+                if (rc != endMarker) {
+                receivedChars[byteBuffer1] = rc;
+                byteBuffer1++;
+                    if (byteBuffer1 >= numChars) {
+                    byteBuffer1 = numChars - 1;
+                    }
+                } else {
+                receivedChars[byteBuffer1] = '\0'; // terminate the string
+                recvInProgress = false;
+                newData = true;
+                }
+         } else if (rc == startMarker) { recvInProgress = true;}
+    } //while
+    
+    if (newData) break; // breaks out of the timeout dowhile-loop after data is input
+    
+}while ((millis() - startMillis) < 200000); // 200 seconds to respond?
+
+if (!newData){   // if newData = false then return to menu
+Serial.println(F("NO valid information received -> returning to start menu"));
+Serial.flush(); return;
+}
+
+// erase previous description                 // NOTE I'm leaving LAST 512 eeprom memory locations for future use screen fonts
+for (uint16_t h = EEstart; h <= EEend; h++){           // EEPROM.update does not write new data unless new content is different from old
+    EEPROM.update(h,32);                      // writes [32] to each memory location which is the 'blank space' character in ascii
+    if ((h % 16) == 0){Serial.print(F("."));} // send progress indicator dot to the serial monitor window (every 16 characters)
+    delay(4);                                 // writing to the internal eeprom needs 3.5 msec per byte and adds an additional 8mA to the ProMini’s normal 5mA operating current
+    }
+
+// save new 100 -char Hardware details to EEprom (serial input buffer limits you to only 80 characters input)
+  for (uint16_t i = 0; i < byteBuffer1; i++){
+    EEPROM.update(i+EEstart,receivedChars[i]);
+    Serial.print(F("."));
+    delay(4);
+    }
+      
+  Serial.println();Serial.print(F("New Info Saved: "));
+  Serial.println(receivedChars);Serial.flush();
+  return;
+}// end startMenu_updateLoggerInfoField
 
 void startMenu_sendData2Serial(boolean convertDataFlag){ // called at startup via serial window
 //===============================================================================================
@@ -1827,6 +2034,26 @@ if (!convertDataFlag){    // then output raw bytes exactly as read from eeprom [
       Serial.print(",");
 #endif
 
+#ifdef readSht3x_Humidity              // 2-bytes, low byte first
+      //Sht30 resolution is only: 0.01°C and 0.01 %RH
+      loByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer); //low byte
+      EEmemPointer++;
+      hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer); //hi byte
+      EEmemPointer++;
+      int16_Buffer = (int16_t)((hiByte << 8) | loByte);
+      floatBuffer  = (float)(int16_Buffer)/100.0;
+      Serial.print(floatBuffer,2);Serial.print(",");
+#endif
+
+#ifdef readSht3x_Temperature          //2-bytes, low byte first
+      loByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer); //low byte
+      EEmemPointer++;
+      hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer); //hi byte
+      EEmemPointer++;
+      int16_Buffer = (int16_t)((hiByte << 8) | loByte);
+      floatBuffer  = (float)(int16_Buffer)/100.0;
+      Serial.print(floatBuffer,2);Serial.print(",");
+#endif
 
 #ifdef readBMP280_Temperature           // Bmp280_Temp_degC, 2-bytes, low byte first
       loByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer); //low byte
@@ -1918,213 +2145,6 @@ if (!convertDataFlag){    // then output raw bytes exactly as read from eeprom [
   Serial.flush();
   EEmemPointer = 64;                       //back to starup default value
 }  // terminates sendData2Serial() function
-
-void startMenu_updateLoggerInfo(){
-//----------------------------------------------------------------------------------------------------
-// Serial input method from Example 3  https://forum.arduino.cc/t/serial-input-basics-updated/382007
-//------------------------------------------------------------------------------------------------------
-
-Serial.println(F("Type < a description of the logger hardware > with < & > at ends + [Enter]"));
-Serial.println(F(" < MAXIMUM 100 characters >                             [Timeout: 200 sec]"));
-while(Serial.available()) { byteBuffer1 = Serial.read();}   // clears any leftover bytes in serial buffer
-//Serial.setTimeout(100000); not needed here?
-
-byteBuffer1 = 0; // counts the # of receivedChars // Char is signed and that Byte is unsigned.
-boolean newData = false;
-boolean recvInProgress = false;
-char startMarker = '<';
-char endMarker = '>';
-char rc; //incoming character
-byte numChars = 101;  //sets maximum number of characters that can be recieved
-char receivedChars[numChars];
-
-uint32_t startMillis = millis();
-do {   // timeout do-while loop
-
-   while (Serial.available() > 0 && newData == false) {
-        rc = Serial.read();
-
-        if (recvInProgress == true) {
-                if (rc != endMarker) {
-                receivedChars[byteBuffer1] = rc;
-                byteBuffer1++;
-                    if (byteBuffer1 >= numChars) {
-                    byteBuffer1 = numChars - 1;
-                    }
-                } else {
-                receivedChars[byteBuffer1] = '\0'; // terminate the string
-                recvInProgress = false;
-                newData = true;
-                }
-         } else if (rc == startMarker) { recvInProgress = true;}
-    } //while
-    
-    if (newData) break; // breaks out of the timeout dowhile-loop after data is input
-    
-}while ((millis() - startMillis) < 200000); // 200 seconds to respond?
-
-if (!newData){   // if newData = false then return to menu
-Serial.println(F("NO valid information received -> returning to start menu"));
-Serial.flush(); return;
-}
-
-// erase previous description                 // NOTE I'm leaving LAST 512 eeprom memory locations for future use screen fonts
-for (uint16_t h = 64; h < 165; h++){         // EEPROM.update does not write new data unless new content is different from old
-    EEPROM.update(h,32);                      // writes [32] to each memory location which is the 'blank space' character in ascii
-    if ((h % 16) == 0){Serial.print(F("."));} // send progress indicator dot to the serial monitor window (every 16 characters)
-    delay(4); // writing to the internal eeprom needs 3.5 msec per byte ande adds an additional 8mA to the ProMini’s normal 5mA operating current
-    }
-
-// save new 80-character Hardware details to EEprom (serial input buffer limits you to only 80 characters input)
-  for (uint16_t i = 0; i < byteBuffer1; i++){
-    EEPROM.update(i+64,receivedChars[i]);
-    Serial.print(F("."));
-    delay(4);
-    }
-      
-  Serial.println();Serial.print(F("New Logger Info saved: "));
-  Serial.println(receivedChars);Serial.flush();
-  return;
-}// end startMenu_updateLoggerInfo
-
-void startMenu_updateCalibrationConstants(){
-//----------------------------------------------------------------------------------------------------
-// Serial input method from Example 3  https://forum.arduino.cc/t/serial-input-basics-updated/382007
-//------------------------------------------------------------------------------------------------------
-
-Serial.println(F("Paste in < CAL date, constants > with < & > at ends + [Enter]"));
-Serial.println(F(" < MAXIMUM 100 characters >                [Timeout: 200 sec]"));
-while(Serial.available()) { byteBuffer1 = Serial.read();}   // clears any leftover bytes in serial buffer
-//Serial.setTimeout(100000); not needed here?
-
-byteBuffer1 = 0; // counts the # of receivedChars // Char is signed and that Byte is unsigned.
-boolean newData = false;
-boolean recvInProgress = false;
-char startMarker = '<';
-char endMarker = '>';
-char rc; //incoming character
-byte numChars = 101;  //sets maximum number of characters that can be recieved
-char receivedChars[numChars];
-
-uint32_t startMillis = millis();
-do {   // timeout do-while loop
-
-   while (Serial.available() > 0 && newData == false) {
-        rc = Serial.read();
-
-        if (recvInProgress == true) {
-                if (rc != endMarker) {
-                receivedChars[byteBuffer1] = rc;
-                byteBuffer1++;
-                    if (byteBuffer1 >= numChars) {
-                    byteBuffer1 = numChars - 1;
-                    }
-                } else {
-                receivedChars[byteBuffer1] = '\0'; // terminate the string
-                recvInProgress = false;
-                newData = true;
-                }
-         } else if (rc == startMarker) { recvInProgress = true;}
-    } //while
-    
-    if (newData) break; // breaks out of the timeout dowhile-loop after data is input
-    
-}while ((millis() - startMillis) < 200000); // 200 seconds to respond?
-
-if (!newData){   // if newData = false then return to menu
-Serial.println(F("NO valid information received -> returning to start menu"));
-Serial.flush(); return;
-}
-
-// erase previous description                 // NOTE I'm leaving LAST 512 eeprom memory locations for future use screen fonts
-for (uint16_t h = 266; h < 367; h++){         // EEPROM.update does not write new data unless new content is different from old
-    EEPROM.update(h,32);                      // writes [32] to each memory location which is the 'blank space' character in ascii
-    if ((h % 16) == 0){Serial.print(F("."));} // send progress indicator dot to the serial monitor window (every 16 characters)
-    delay(4); // writing to the internal eeprom needs 3.5 msec per byte ande adds an additional 8mA to the ProMini’s normal 5mA operating current
-    }
-
-// save new 80-character Hardware details to EEprom (serial input buffer limits you to only 80 characters input)
-  for (uint16_t i = 0; i < byteBuffer1; i++){
-    EEPROM.update(i+266,receivedChars[i]);
-    Serial.print(F("."));
-    delay(4);
-    }
-      
-  Serial.println();Serial.print(F("New Cal constants saved: "));
-  Serial.println(receivedChars);Serial.flush();
-  return;
-}// end startMenu_updateCalibrationConstants
-
-void startMenu_updateDeploymentInfo(){
-//----------------------------------------------------------------------------------------------------
-// Serial input method from Example 3  https://forum.arduino.cc/t/serial-input-basics-updated/382007
-//------------------------------------------------------------------------------------------------------
-
-Serial.println(F("Type < description of the deployment > with < & > at ends + [Enter]"));
-Serial.println(F(" < MAXIMUM 100 characters >                      [Timeout: 200 sec]"));
-while(Serial.available()) { byteBuffer1 = Serial.read();}   // clears any leftover bytes in serial buffer
-//Serial.setTimeout(100000); not needed here?
-
-byteBuffer1 = 0; // counts the # of receivedChars // Char is signed and that Byte is unsigned.
-boolean newData = false;
-boolean recvInProgress = false;
-char startMarker = '<';
-char endMarker = '>';
-char rc; //incoming character
-byte numChars = 101;  //sets maximum number of characters that can be recieved
-char receivedChars[numChars];
-
-uint32_t startMillis = millis();
-do {   // timeout do-while loop
-
-   while (Serial.available() > 0 && newData == false) {
-        rc = Serial.read();
-
-        if (recvInProgress == true) {
-                if (rc != endMarker) {
-                receivedChars[byteBuffer1] = rc;
-                byteBuffer1++;
-                    if (byteBuffer1 >= numChars) {
-                    byteBuffer1 = numChars - 1;
-                    }
-                } else {
-                receivedChars[byteBuffer1] = '\0'; // terminate the string
-                recvInProgress = false;
-                newData = true;
-                }
-         } else if (rc == startMarker) { recvInProgress = true;}
-    } //while
-    
-    if (newData) break; // breaks out of the timeout dowhile-loop after data is input
-    
-}while ((millis() - startMillis) < 200000); // 200 seconds to respond?
-
-if (!newData){   // if newData = false then return to menu
-Serial.println(F("NO valid information received -> returning to start menu"));
-Serial.flush(); return;
-}
-
-// erase previous description                 // NOTE I'm leaving LAST 512 eeprom memory locations for future use screen fonts
-for (uint16_t h = 165; h < 266; h++){         // EEPROM.update does not write new data unless new content is different from old
-    EEPROM.update(h,32);                      // writes [32] to each memory location which is the 'blank space' character in ascii
-    if ((h % 16) == 0){Serial.print(F("."));} // send progress indicator dot to the serial monitor window (every 16 characters)
-    delay(4); // writing to the internal eeprom needs 3.5 msec per byte ande adds an additional 8mA to the ProMini’s normal 5mA operating current
-    }
-
-// save new 80-character Hardware details to EEprom (serial input buffer limits you to only 80 characters input)
-//for (uint16_t i = 0; i < command.length(); i++){
-  for (uint16_t i = 0; i < byteBuffer1; i++){
-    //EEPROM.update(i+156,command.charAt(i));
-    EEPROM.update(i+165,receivedChars[i]);
-    //if ((i % 16) == 0){Serial.print(F("."));}
-    Serial.print(F("."));
-    delay(4);
-    }
-      
-  Serial.println();Serial.print(F("New details saved: "));
-  Serial.println(receivedChars);Serial.flush();
-  return;
-}// end startMenu_updateDeploymentInfo
 
 void startMenu_restoreStartValuesFromBackup(){        // this option NOT DISPLAYED in the start menu - only used when fixing a dead logger
 //--------------------------------------------------------------------------------------------------
@@ -2686,7 +2706,7 @@ uint16_t ReadD6riseTimeOnD8(){            //2023-06-20: internal pullup resistor
     power_twi_enable();        // cant use I2C bus without interrupts enabled
     if(ECHO_TO_SERIAL){
       power_usart0_enable();   
-      Serial.print(F(" D6raw:"));Serial.print(timer1CounterValue);;Serial.flush(); 
+      Serial.print(F(" D6 Timer1:"));Serial.print(timer1CounterValue);;Serial.flush(); 
       }
 
 return timer1CounterValue;
@@ -2731,7 +2751,7 @@ uint16_t ReadD7riseTimeOnD8(){
     power_twi_enable();        // cant use I2C bus without interrupts enabled
     if(ECHO_TO_SERIAL){
       power_usart0_enable();   
-      Serial.print(F(", D7 NTC time:"));Serial.print(timer1CounterValue);Serial.flush(); 
+      Serial.print(F(", D7 NTC Timer1:"));Serial.print(timer1CounterValue);Serial.flush(); 
       }
     
   return timer1CounterValue;
@@ -2781,7 +2801,7 @@ uint16_t ReadD8riseTimeOnD8(){
     power_twi_enable();        // cant use I2C bus without interrupts enabled
       if(ECHO_TO_SERIAL){
       power_usart0_enable();   
-      Serial.print(F(", D8(32k pullup) time:"));Serial.print(timer1CounterValue);Serial.flush(); 
+      Serial.print(F(", D8(32k pullup) Timer1:"));Serial.print(timer1CounterValue);Serial.flush(); 
       }
     
     return timer1CounterValue;
