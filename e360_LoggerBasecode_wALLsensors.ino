@@ -8,6 +8,26 @@ Data download & logger control are managed through the IDE's serial monitor wind
 The logger WILL NOT START until those serial handshakes are completed via a UART connection.
 The most important rule to follow when adding new sensors is that this code can only accept 1, 2, 4, 8 or 16 sensorBytesPerRecord.
 These 'powers of 2' fit in the I2C buffer AND divide evenly into the EEproms hardware page size to prevent wrap-around.
+
+The only library you MUST INSTALL for the minimum configuration of Promini & RTC module is LowPower [by LowPowerLab]
+--------------------------------------------------------------------------------------------------------------------
+this can be INSTALLED via the Library Manager or from https://github.com/LowPowerLab/LowPower
+
+Three sensors are supported by this code natively so do not need a library:
+  readNTC, readLDR, and Si7051  (the reference sensor we use for NTC calibrations)
+
+The following sensors require library installations before they can be used:
+---------------------------------------------------------------------------
+  BH1750 LUX senso uses hp_BH1750  [by Stefan Armborst] via Lib Manager OR from https://github.com/Starmbi/hp_BH1750
+
+  Sht30 Humidity sensor uses SHT85  [by Rob Tillaart] via Lib Manager OR from https://github.com/RobTillaart/SHT85/tree/master
+
+  BMP280 uses BMP280_DEV  [by Martin Lindupp] which is available through the Lib Manager although the repo seems to have disappeared from github(?)
+
+  BME280 (includes RH%) uses forcedBMX280  [by soylentOrange] which is available through the Lib Manager
+  OR from https://github.com/soylentOrange/Forced-BMX280/tree/master NOTE that this library also works with the BMP280
+  if you enable only recordBMEtemp_2byteInt and/or recordBMEpressure_2byteInt
+  
 */
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++   
