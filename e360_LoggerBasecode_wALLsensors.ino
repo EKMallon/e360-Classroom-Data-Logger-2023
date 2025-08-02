@@ -45,7 +45,7 @@ The following sensors require library installations before they can be used:
 //#define logCurrentBattery_2byte           // RARELY USED - not 1byte compressed like LowestBattery, primarily included as a powers-of-2 balancing option
 //#define logFreeVariableMemory_2byte       // RARELY USED - primarily included as a powers-of-2 rule balancing option that does not rely on any external sensors to be present
 
-#define readNTC_D8pullUprD7ntc            // 2-bytes: ohms // for explanation of the method for reading analog resistance with digital pins see
+//#define readNTC_D8pullUprD7ntc            // 2-bytes: ohms // for explanation of the method for reading analog resistance with digital pins see
 //#define readLDR_onD6                      // 2-bytes: ohms // https://thecavepearlproject.org/2019/03/25/using-arduinos-input-capture-unit-for-high-resolution-sensor-readings/
                                             // these have to match the connections shown in the build lab!
 //#define readSi7051_Temperature            // 2-bytes: often used for NTC calibration - does not require a library, functions for si7051 at end of program
@@ -1247,9 +1247,9 @@ turnOffAllindicatorLEDs();
 
 #ifdef logFreeVariableMemory_2byte             // stores the 'raw' 16-byte integer using two bytes (ie with no compression)
 //-----------------------------------------------------------------------------------------------------------------------
-  loByte = lowByte(CurrentBattery);
+  loByte = lowByte(freeVariableMemory);
         Wire.write(loByte);              
-  hiByte = highByte(CurrentBattery);
+  hiByte = highByte(freeVariableMemory);
         Wire.write(hiByte);  
 #endif //logFreeVariableMemory_2byte
 
@@ -3076,4 +3076,3 @@ int freeRam ()
   int v;
   return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval);
 }
-
