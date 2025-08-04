@@ -1587,7 +1587,7 @@ void setup_sendboilerplate2serialMonitor(){
     Serial.println();
 
     Serial.print(F("Normalized:,"));
-    for (uint16_t k = 366; k < 467; k++) { OnecharBuffer = EEPROM.read(k); Serial.print(OnecharBuffer); }
+    for (uint16_t k = 367; k < 468; k++) { OnecharBuffer = EEPROM.read(k); Serial.print(OnecharBuffer); }
     Serial.println();
   
     Serial.print(F("Deployment:,"));
@@ -3076,3 +3076,4 @@ int freeRam ()
   int v;
   return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval);
 }
+
