@@ -35,12 +35,13 @@ The following sensors require library installations before they can be used:
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++   
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 /*
-EEPROM(0-3)     logger START TIME in unixtime (for reconstructiong timestamps later in sendSerial)
-EEPROM(4-7)     InternalReferenceConstant for calc. rail voltage from ADC in readRailVoltage
-EEPROM(8)       SampleIntervalMinutes
-EEPROM(9)       SampleIntervalSeconds
-EEPROM(10)      RTCagingOffset [adjusting by 3 compensates for ~ 1second of drift per month]
-EEPROM(12-15)   4byte UNIXtime of last time RTC was set by startMenu_setRTCtime - for drift tracking
+(0-3)     logger START TIME in unixtime (for reconstructiong timestamps later in sendSerial)
+(4)       SampleIntervalMinutes
+(5)       SampleIntervalSeconds
+(6-9)     InternalReferenceConstant for calc. rail voltage from ADC in readRailVoltage
+(10)      RTCagingOffset [adjusting by 3 compensates for ~ 1second of drift per month]
+(12-15)   4byte UNIXtime of last time RTC was set by startMenu_setRTCtime - for drift tracking
+(20-23)   Sensor starting paramaters usually stored from (24) onwards
 
 FOUR 100-CHARACTER text info FIELDS also get stored in 328p internal eeprom:
 Logger info:            64 to 164
@@ -69,8 +70,8 @@ Note: we still have upper 512 bytes of 328p 1k eeprom availible for OLED screen 
 //#define logCurrentBattery_2byte          // RARELY USED - not 1byte compressed like LowestBattery, primarily included as a powers-of-2 balancing option
 //#define logFreeVariableMemory_2byte      // RARELY USED - primarily included as a powers-of-2 rule balancing option that does not rely on any external sensors to be present
 
-//#define readD7resistorwD8pullup_2byte    // usuallyNTC // 2-bytes: ohms // for explanation of the method for reading analog resistance with digital pins see
-//#define readD6ResistorwD8pullup_2byte    // LDR(?) // 2-bytes: ohms // https://thecavepearlproject.org/2019/03/25/using-arduinos-input-capture-unit-for-high-resolution-sensor-readings/
+//#define readD7resistorwD8pullup_2byte      // NTC // 2-bytes: ohms // for explanation of the method for reading analog resistance with digital pins see
+//#define readD6ResistorwD8pullup_2byte    // LDR // 2-bytes: ohms // https://thecavepearlproject.org/2019/03/25/using-arduinos-input-capture-unit-for-high-resolution-sensor-readings/
                                            // these have to match the connections shown in the build lab!
 //#define readSi7051_Temp_2byte            // 2-bytes: often used for NTC calibration - does not require a library, functions for si7051 at end of program
 
@@ -92,7 +93,7 @@ Note: we still have upper 512 bytes of 328p 1k eeprom availible for OLED screen 
 //#define OLED_64x32_SSD1306                // not a sensor, but enabled with define to include needed library - requires 1000uF rail capacitor!-
 
 //r9_b10_g11_gnd12 is the DEFAULT on the e360 logger for the Pulse Width Modulation lab
-#define LED_r9_b10_g11_gnd12               // enables code for RGB indicator LED //1k limit resistor on shared GND line!
+#define LED_r9_b10_g11_gnd12               // enables code for RGB indicator LED // 1k limit resistor on shared GND line!
 //#define LED_GndGB_A0_A2                  // For 2022 2-module build with NO breadboards: red channel leg on led cut, A0gnd Green A1, blue A2, default Red on d13 left in place
 // Red LED on D13 gets used if both of the LED #define statements are commented out
 
@@ -124,6 +125,7 @@ uint8_t SampleIntervalSeconds = 0;            // minutes must be zero for interv
 
 bool ECHO_TO_SERIAL = false;                  // true enables multiple print statements throughout the code via if(ECHO_TO_SERIAL){} // also starts the run with no interval sync delay so timestamps are misaligned
 bool displayMoreOptions = false;              // Flag toggle between Setup and Runtime Menus in void setup_displayStartMenu()
+bool settingsChanged = false;                 // Flag forces backup copy of operating parameters from 1st 64bytes 328p to 1st 64bytes Ext. EEprom
 
 // most VARIABLES below this point stay the SAME on all machines:
 //---------------------------------------------------------------------------
@@ -446,17 +448,17 @@ void setup () {
 
 // Check Previous run Parameters stored in 328p eeprom [ update happens only on 1st run of a brand new logger]
 //------------------------------------------------------------------------------------------------------------
-  EEPROM.get(4,InternalReferenceConstant);                      //in this case .get is reading 4 consecutive bytes into the long (32bit) integer InternalReferenceConstant
+  EEPROM.get(6,InternalReferenceConstant);                      //in this case .get is reading 4 consecutive bytes into the long (32bit) integer InternalReferenceConstant
   if((InternalReferenceConstant<1000000) || (InternalReferenceConstant>1228800)){ //if value stored in eeprom is outside normal operating parameters
     InternalReferenceConstant=1126400;                          // then re-sets it to the default 1126400
-  EEPROM.put(4,InternalReferenceConstant);}                     // and store that default back in the eeprom
+  EEPROM.put(6,InternalReferenceConstant);}                     // and store that default back in the eeprom
   
-  SampleIntervalMinutes = EEPROM.read(8);                       // retrieve 'previous' sampling interval data stored in the CPU's internal 1024 bytes of eeprom space
-  SampleIntervalSeconds = EEPROM.read(9);                       // these numbers will be random the first time the logger is run because the EEprom memory locations are empty
+  SampleIntervalMinutes = EEPROM.read(4);                       // retrieve 'previous' sampling interval data stored in the CPU's internal 1024 bytes of eeprom space
+  SampleIntervalSeconds = EEPROM.read(5);                       // these numbers will be random the first time the logger is run because the EEprom memory locations are empty
   if((SampleIntervalMinutes>60) || (SampleIntervalSeconds>30))  //if values read from eeprom are outside allowed maximums then reset to 'safe' default values
     { SampleIntervalMinutes=15;SampleIntervalSeconds=0;
-      EEPROM.update(8,SampleIntervalMinutes); 
-      EEPROM.update(9,SampleIntervalSeconds); }                 // .update is the same as .put, except that it only writes the data if there is a change - eeprom has a limited # of write cycles
+      EEPROM.update(4,SampleIntervalMinutes); 
+      EEPROM.update(5,SampleIntervalSeconds); }                 // .update is the same as .put, except that it only writes the data if there is a change - eeprom has a limited # of write cycles
 
 //===============================================================================================
 // Logger Configuration Menu via Serial Monitor  [loops for 8 minutes or until START is selected]
@@ -730,6 +732,8 @@ RTC_DS3231_getTime();                     // populates the global variables t_da
 // Transfer BACKUP COPY of starting parameters in bytes 0-64 internal 328p eeprom into 0-64 bytes of external eeprom
 // done in four steps because wire buffer can only transfer 16 bytes at a time
 
+if(settingsChanged){ // any time an operating parameter is changed by one of the startup menu options backup all 64 bytes
+
   Wire.beginTransmission(EEpromI2Caddr);    // physicalEEpromAddr = block[0];   
   Wire.write(0); Wire.write(0);             // two bytes to specify the external eeprom address
   for (uint8_t p = 0; p < 16; p++) { byteBuffer1 = EEPROM.read(p); Wire.write(byteBuffer1);}
@@ -751,8 +755,18 @@ RTC_DS3231_getTime();                     // populates the global variables t_da
   for (uint8_t s = 48; s < 64; s++) { byteBuffer1 = EEPROM.read(s); Wire.write(byteBuffer1);}
   Wire.endTransmission(); delay(11); 
 
+} else{   // ALWAYS copy the logger start time & sampling intervals (used for timestamp reconstruction)
+
+  Wire.beginTransmission(EEpromI2Caddr);   // physicalEEpromAddr = block[0];   
+  Wire.write(0); Wire.write(0);            // two bytes to specify the external eeprom address
+  for (uint8_t p = 0; p < 6; p++) { byteBuffer1 = EEPROM.read(p); Wire.write(byteBuffer1);}
+  Wire.endTransmission();
+  
+} //if(settingsChanged){ 
+
 //------------------------------------------------------------------------------  
-  Serial.println(F("LEDs 'flicker' for SyncDelay til 1stRead, then GREEN pips @sample time")); 
+  Serial.println(F("B&G LEDs 'flicker' for SyncDelay til 1stRead, then GREEN pips @sampleTime")); 
+  Serial.println(F("--- If you don't observe the 'flicker' then restart the logger again ---"));
   if(!ECHO_TO_SERIAL){          // if it's not being used, shut down the UART peripheral now to save power
     Serial.println(F("Disconnect UART now - NO additional messages will be sent over serial.")); Serial.flush();
         // power_usart0_disable();          // we waited until this point because the startup input menu requires serial input via the UART
@@ -1208,12 +1222,15 @@ turnOffAllindicatorLEDs();
 #endif
 
 #ifdef readSht3x_Temp_2byte                    // Sht30 resolution is only: 0.01°C and 0.01%RH
-  Sht3x_Temp_degC = Sht3x_Temp_degC*100.00;     // convert float reading to integer preserving two decimal places
-  int16_Buffer = (int16_t)Sht3x_Temp_degC;  
-  loByte = lowByte(int16_Buffer);               // first byte of record gets checked by 
+  // SHIFT the temps +10C so that we can reconstruct with 65535 range of uint16_t
+  // giving us a range of -10C to +55.534C before calc fails
+  Sht3x_Temp_degC = Sht3x_Temp_degC + 10.0;
+  Sht3x_Temp_degC = Sht3x_Temp_degC*100.00;     // converts float to integer preserving two decimal places
+  uint16_Buffer = (uint16_t)Sht3x_Temp_degC;    // Resolution is only 0.01 °C, so only preserve two decimal places
+  loByte = lowByte(uint16_Buffer);              // first byte of record gets checked by 
   //if(loByte<1){loByte=1;}                     // to preserve zero EOF indicator in 'empty' EEprom space if single sensor
         Wire.write(loByte);
-  hiByte = highByte(int16_Buffer);
+  hiByte = highByte(uint16_Buffer);
         Wire.write(hiByte); 
 #endif
 
@@ -1722,7 +1739,7 @@ void startMenu_printMenuOptions(){
     if(t_year==2000){Serial.print(F("(*)"));} // flags need for clock set
   Serial.print(F(" Time:")); Serial.print(t_hour,DEC);Serial.print(F(":"));Serial.print(t_minute,DEC);
   Serial.print(F(":"));Serial.print(t_second,DEC); //seconds separate because usually value is zero
-  EEPROM.get(4,InternalReferenceConstant); // use .get for multi-byte variables
+  EEPROM.get(6,InternalReferenceConstant); // use .get for multi-byte variables
   Serial.print(F("  VREF:"));Serial.print(InternalReferenceConstant);
   #ifndef LowMemoryCompile
     if(InternalReferenceConstant==1126400){Serial.print(F("(Set?) "));}
@@ -1736,8 +1753,8 @@ void startMenu_printMenuOptions(){
   startMenu_listEnabledSensors();
   Serial.println();
   
-  SampleIntervalMinutes = EEPROM.read(8);
-  SampleIntervalSeconds = EEPROM.read(9);
+  SampleIntervalMinutes = EEPROM.read(4);
+  SampleIntervalSeconds = EEPROM.read(5);
   Serial.print(F("RUNtime: "));Serial.print(totalBytesOfStorage-64);//64 bytes reserved for parameter backup
   Serial.print(F(" / "));Serial.print(sensorBytesPerRecord);Serial.print(F("recBytes @ "));
     if (SampleIntervalMinutes==0){Serial.print(SampleIntervalSeconds);Serial.print(F("sec"));}else{Serial.print(SampleIntervalMinutes);Serial.print(F("min"));}
@@ -1810,7 +1827,7 @@ void startMenu_listEnabledSensors(){
   #ifdef PIRtriggersSensorReadings
         Serial.print(F("PIR Triggers Reading, "));
         #endif
-  #if defined(readD7ResistorwD6ref_2byte) || defined(eadD7resistorwD8pullup_2byte)
+  #if defined(readD7ResistorwD6ref_2byte) || defined(readD7resistorwD8pullup_2byte)
         Serial.print(F("D7r[Ω], "));  //e360 & 2part
         #endif 
   #ifdef readD9resistorwD6ref_2byte    // 2part
@@ -1871,7 +1888,8 @@ do {
    i2c_writeRegisterByte(DS3231_ADDRESS,DS3231_AGING_OFFSET_REG,RTCagingOffset);
    delay(15);
    RTCagingOffset = i2c_readRegisterByte(DS3231_ADDRESS,DS3231_AGING_OFFSET_REG);
-   Serial.print(F("RTC Aging Offset set to: ")); Serial.println(RTCagingOffset);  
+   Serial.print(F("RTC Aging Offset set to: ")); Serial.println(RTCagingOffset); 
+   settingsChanged = true; // forces backup of first 64bytes 328p eeprom to External EEprom at end of startup 
    return;
 } // terminates startMenu_setRTCageOffset
 
@@ -1884,14 +1902,17 @@ do {
     InternalReferenceConstant = Serial.parseInt();          //parseInt() actually returns a long
     }while((InternalReferenceConstant<1000000) || (InternalReferenceConstant>1228800)); // if condition fails & you have to re-enter the number
    Serial.print(F("Vref set to: ")); Serial.println(InternalReferenceConstant);
-   EEPROM.put(4,InternalReferenceConstant);                 // every time you run the logger it will retrieve the interval from the previous run 
+   EEPROM.put(6,InternalReferenceConstant);                 // every time you run the logger it will retrieve the interval from the previous run 
+   settingsChanged = true; // forces backup of first 64bytes 328p eeprom to External EEprom at end of startup    
    return;
 } // terminates startMenu_setVrefConstant
 
 void startMenu_setSampleInterval(){
 //-----------------------------------------------------------------------------------------
 do {
-    Serial.println();Serial.println(F("Input a sampling interval of 1,2,5,10,15,20,30,60 or [0] minutes:"));
+    Serial.println();
+    Serial.println(F("Don't change intervals until AFTER downloading any prexisting data!"));
+    Serial.println(F("Input a sampling interval of 1,2,5,10,15,20,30,60 or [0] minutes:"));
     byteBuffer1 = 0;  while (Serial.available() != 0 ) {Serial.read();}   // clears the serial buffer  
     Serial.setTimeout(100000); SampleIntervalMinutes = Serial.parseInt(); 
     byteBuffer1 = SampleIntervalMinutes ? 60 % SampleIntervalMinutes : 0; // ERROR check: input must be valid divisor of 60 OR zero
@@ -1911,16 +1932,15 @@ do {
         }while ((byteBuffer2 !=0) || (SampleIntervalSeconds>30));               // or while condition fails & you have to re-enter the number
       Serial.print(F("  Sub-minute Sample Interval: ")); Serial.print(SampleIntervalSeconds);Serial.println(F(" seconds"));
       }
-
     if (SampleIntervalMinutes==0 && SampleIntervalSeconds==0){
       Serial.println(F("Invalid Entry: 15 min DEFAULT interval being SET"));Serial.flush();
       SampleIntervalMinutes = 15;SampleIntervalSeconds = 0;
       }
-    EEPROM.update(8,SampleIntervalMinutes);             // newly entered values are now stored in the 329p's internal eeprom
-    EEPROM.update(9,SampleIntervalSeconds);             // every time you run the logger it will retrieve the interval from the previous run 
-    
- return;
-}//startMenu_setSampleInterval
+    EEPROM.update(4,SampleIntervalMinutes);             // newly entered values are now stored in the 329p's internal eeprom
+    EEPROM.update(5,SampleIntervalSeconds);             // every time you run the logger it will retrieve the interval from the previous run 
+    settingsChanged=true; // forces backup of first 64bytes 328p eeprom to External EEprom at end of startup 
+    return;
+} // startMenu_setSampleInterval
 
 
 void startMenu_setRTCtime(){
@@ -1989,7 +2009,10 @@ if ((uint32_Buffer > 0) && (uint32_Buffer < 240)) {  // <20 years equivalent in 
     i2c_setRegisterBit(DS3231_ADDRESS,DS3231_STATUS_REG,7,0); //clear the OSF flag after time is set
     DS3231_PowerLossFlag=false;
     }   //terminates if (set_t_month==0 && set_t_day==0){
-}
+
+    settingsChanged=true; // forces backup of first 64bytes 328p eeprom to External EEprom at end of startup 
+} //terminates startMenu_setRTCtime
+
 
 
 void startMenu_updateLoggerInfoField(uint8_t switchText,uint16_t EEstart,uint16_t EEend){
@@ -2096,8 +2119,8 @@ if (convertDataFlag){                     // don't print these headers if sendin
 //starting time value was stored in first four bytes of the 328p internal eeprom:
   uint32_t unix_timeStamp;
     EEPROM.get(0,unix_timeStamp);                       // the loggerStartTime saved at previous logger startup
-    SampleIntervalMinutes = EEPROM.read(8);
-    SampleIntervalSeconds = EEPROM.read(9);
+    SampleIntervalMinutes = EEPROM.read(4);
+    SampleIntervalSeconds = EEPROM.read(5);
     
   uint16_t secondsPerSampleInterval;
     if (SampleIntervalMinutes==0){                      // sub-minute alarms for accelerated run testing
@@ -2230,8 +2253,9 @@ if (!convertDataFlag){    // then output raw bytes exactly as read from eeprom [
       EEmemPointer++;
       hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer); //hi byte
       EEmemPointer++;
-      int16_Buffer = (int16_t)((hiByte << 8) | loByte);
-      floatBuffer  = (float)(int16_Buffer)/100.0;
+      uint16_Buffer = (uint16_t)((hiByte << 8) | loByte);    
+      floatBuffer  = (float)(uint16_Buffer)/100.0;
+      floatBuffer  = floatBuffer -10.0; // correction for the +10C shift we did before *100 to preserve the decimals
       Serial.print(floatBuffer,2);Serial.print(",");
 #endif
 
@@ -2329,17 +2353,50 @@ if (!convertDataFlag){    // then output raw bytes exactly as read from eeprom [
   Serial.println();
   } while(EEmemPointer < totalBytesOfStorage); // terminates the readback loop when pointer reaches end of memory space
   //---------------------------------------------------------------------------------------
-
+  Serial.println();
   Serial.print(F("Download took: "));Serial.print((millis() - startMillis));Serial.println(F(" msec"));
   Serial.flush();
   EEmemPointer = 64;                       //back to starup default value
 }  // terminates sendData2Serial() function
 
-void startMenu_restoreStartValuesFromBackup(){        // this option NOT DISPLAYED in the start menu - only used when fixing a dead logger
-//--------------------------------------------------------------------------------------------------
+
+void startMenu_restoreStartValuesFromBackup(){        // this option only used when fixing a dead logger!
+//-------------------------------------------------------------------------------------------------------
+    uint8_t tempDataBuffer[16];
+
+    Serial.println(F("WARNING: this functionality is still in dev -not fully tested yet-")); 
+ 
+    Serial.println(F("Parameters in 328p:"));
+    Serial.print(F("Start Utime:"));EEPROM.get(0,uint32_Buffer);Serial.print(uint32_Buffer);
+    Serial.print(F("  Interval:"));Serial.print(EEPROM.read(4));Serial.print(F("m, "));
+    Serial.print(EEPROM.read(5));Serial.println(F("s"));
+    Serial.print(F("Vref:"));EEPROM.get(6,uint32_Buffer);Serial.println(uint32_Buffer); 
+    //Serial.print(F("  RTCage:"));Serial.print(EEPROM.read(10));
+    Serial.println();Serial.println(F("Will be replaced by these Ext.EEprom values:"));
+    byteBuffer2=0;
+    Wire.beginTransmission(EEpromI2Caddr);
+    Wire.write(0);Wire.write(0); Wire.endTransmission();
+    Wire.requestFrom(EEpromI2Caddr,16);
+    while (Wire.available()) {tempDataBuffer[byteBuffer2++] = Wire.read();}
+    byteBuffer2=0;
+    Serial.print(F("Start Utime:"));
+    uint32_Buffer = tempDataBuffer[byteBuffer2++];
+    uint32_Buffer = (uint32_Buffer << 8) | tempDataBuffer[byteBuffer2++];
+    uint32_Buffer = (uint32_Buffer << 8) | tempDataBuffer[byteBuffer2++];
+    uint32_Buffer = (uint32_Buffer << 8) | tempDataBuffer[byteBuffer2++];
+    Serial.print(uint32_Buffer);
+    Serial.print(F("  Interval:"));Serial.print(tempDataBuffer[byteBuffer2++]);
+    Serial.print(F("m, "));Serial.print(tempDataBuffer[byteBuffer2++]);Serial.println(F("s"));
+    Serial.print(F("  Vref:"));
+    uint32_Buffer = tempDataBuffer[byteBuffer2++];
+    uint32_Buffer = (uint32_Buffer << 8) | tempDataBuffer[byteBuffer2++];
+    uint32_Buffer = (uint32_Buffer << 8) | tempDataBuffer[byteBuffer2++];
+    uint32_Buffer = (uint32_Buffer << 8) | tempDataBuffer[byteBuffer2++];
+    Serial.println(uint32_Buffer);
+    Serial.println();  
+   
     Serial.println(F("Restoring Logger Parameters from external BACKUP cannot be undone! Proceed? y/n"));
-    clearSerialInputBuffer;   // clears any leftover bytes in serial buffer
-    
+    clearSerialInputBuffer;   // clears any leftover bytes in serial buffer  
     Serial.setTimeout(1000);
     booleanBuffer = true;   byteBuffer1 = 0;
     while (booleanBuffer) {
@@ -2350,10 +2407,14 @@ void startMenu_restoreStartValuesFromBackup(){        // this option NOT DISPLAY
             Wire.beginTransmission(EEpromI2Caddr);          
             Wire.write(0); Wire.write(0);               // two bytes to specify the external eeprom address
             Wire.endTransmission();
-            Wire.requestFrom(EEpromI2Caddr,64);
-            for (uint8_t h=0; h<64; h++){
-              byteBuffer2 = Wire.read();
-              EEPROM.write(h, byteBuffer2);    // BLOCKING about 4ms per byte (addr, val);
+
+            Wire.requestFrom(EEpromI2Caddr,16);
+            byteBuffer2=0;
+            while (Wire.available()) {tempDataBuffer[byteBuffer2++] = Wire.read();}
+            
+            for (uint8_t h=0; h<16; h++){
+              EEPROM.update(h, tempDataBuffer[h]); // EEPROM. BLOCKING each byte write is about 4ms
+              // BLOCKING about 4ms per byte (addr, val);
              }
             Serial.println(F("328p startup values RESTORED from BACKUP on external EEprom")); Serial.flush();
             booleanBuffer = false; break;
@@ -2367,6 +2428,7 @@ void startMenu_restoreStartValuesFromBackup(){        // this option NOT DISPLAY
           }       // terminates switch case
       }           // terminates while(booleanBuffer)     
 }                 // terminatesvoid _restoreStartValuesFromBackup
+
 
 //==========================================================================================
 //==========================================================================================
@@ -3178,14 +3240,12 @@ void turnOffAllindicatorLEDs(){
 // from: http://learn.adafruit.com/memories-of-an-arduino/measuring-free-memory
 
 #ifdef logFreeVariableMemory_2byte
-
 int freeRam ()     
 {
   extern int __heap_start, *__brkval;
   int v;
   return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval);
 }
-
 #endif // logFreeVariableMemory_2byte
 
 // DRY: Don't Repeat Yourself! -> use a function for anything you do often:
