@@ -1,4 +1,4 @@
-// 2-module logger code by Edward Mallon - modified for the e360 course at Northwestern University
+// 2-module logger code by Edward Mallon - modified 2026 for the e360 course at Northwestern University
 // https://thecavepearlproject.org/2023/12/01/the-e360-a-classroom-data-logger-for-science/
 /*
 This program supports an ongoing series of DIY 'Classroom Logger' tutorials from the Cave Pearl Project. 
@@ -1488,7 +1488,6 @@ if(ECHO_TO_SERIAL){
 //==========================================================================================
 void sleepNwait4RTCalarm() {                          //NOTE all existing pin states are preserved during sleep
 
-  setUnusedPinsInputHigh();
   turnOffAllindicatorLEDs();
   pinMode(2,INPUT);                                   //D2 pullup off - not needed with hardware pullups on RTC module
   noInterrupts();
@@ -1510,38 +1509,6 @@ void sleepNwait4RTCalarm() {                          //NOTE all existing pin st
 void rtc_d2_alarm_ISR() {                             // this function gets called by attachInterrupt above
   rtc_INT0_Flag = true;                               // this flag only used with interrupt generating sensors on D3
   detachInterrupt(0);                                 // detaching inside the ISR itself makes sure it only triggers ONE time
-}
-
-//============================================================================
-void setUnusedPinsInputHigh(){  // LEDS delt with later with turnOffAllindicatorLEDs
-//============================================================================
-
-
-  // ALL pins to INPUT so no current can leak after shutdown:
-  DDRB &= B11000000;      // pins 13..8 set to zero for input
-  DDRD &= B00000011;      // pins 7..2 set as inputs
-  // DDRC &= B00001000;   // Only A3 needs to be set INPUT during regular operation(?)
-  // we disable those A0-A3 inputs in setup with DIDR0 = 0x0F;
-
-  // ntc circuit pins set to OUTPUT low to drain the NTC capacitor circuit  
-  #if defined(readD7resistorwD8pullup_2byte) || defined(readD6ResistorwD8pullup_2byte)
-  PORTB &= B11111110;     // D8 LOW = PULLUP OFF
-  PORTD &= B00111111;     // D7-6 LOW = PULLUP OFF
-  DDRB  |= B00000001;     // D8 OUTPUT  // to discharge the circuit capacitor
-  DDRD  |= B11000000;     // D7-6 OUTPUT  
-  PORTD |= B00100000;     // D5 PULLUP ON (D5 is not part of the NTC circuit)
-  #else
-  PORTB |= B00000001;     // D8 PULLUP ON
-  PORTD |= B11100000;     // D7-5 PULLUP ON 
-  #endif 
-
-   PORTD |= B00011000;    // D4/3 PULLUPS ON
-   bitClear(PORTD,2);     // D2 always INPUT/LOW for rtc, w 4k7 hardware pullups on RTC module
-  
-  if(bitRead(PRR,PRUSART0)){  // if the USART peripheral IS TURNED OFF = the bit is a 1,  (inverted logic)
-    DDRD &= B1111100;     // pins 1&0 set as inputs
-    PORTD |= B00000011 ;  // pins 1&0 pullups on
-    } 
 }
 
 
