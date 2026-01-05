@@ -1,4 +1,4 @@
-// 2-module logger code by Edward Mallon - modified 2023 for the e360 course at Northwestern University
+// 2-module logger code by Edward Mallon - modified for the e360 course at Northwestern University
 // https://thecavepearlproject.org/2023/12/01/the-e360-a-classroom-data-logger-for-science/
 /*
 This program supports an ongoing series of DIY 'Classroom Logger' tutorials from the Cave Pearl Project. 
@@ -12,9 +12,6 @@ These 'powers of 2' fit in the I2C buffer AND divide evenly into the EEproms har
 The only library you MUST INSTALL for the minimum configuration of Promini & RTC module is LowPower [by LowPowerLab]
 --------------------------------------------------------------------------------------------------------------------
   This can be INSTALLED via the Library Manager or from https://github.com/LowPowerLab/LowPower
-
-Three sensors are supported by this code natively so do not need a library:
-  readNTC, readLDR, and Si7051  (the reference sensor we use for NTC calibrations)
 
 The following sensors require library installations before they can be used:
 ---------------------------------------------------------------------------
@@ -68,12 +65,12 @@ Note: we still have upper 512 bytes of 328p 1k eeprom availible for OLED screen 
 #define logLowestBattery_1byte           // 1-byte (compressed): saves LowestBattery voltage recorded during EEprom saves
 #define logRTC_Temperature_1byte         // 1-byte: the RTC's internal 0.25°C resolution temperature sensor
 //#define logCurrentBattery_2byte          // RARELY USED - not 1byte compressed like LowestBattery, primarily included as a powers-of-2 balancing option
-//#define logFreeVariableMemory_2byte      // RARELY USED - primarily included as a powers-of-2 rule balancing option that does not rely on any external sensors to be present
+//#define logFreeVariableMemory_2byte      // RARELY USED - primarily included as a powers-of-2 rule balancing option that does not rely on any external sensors
 
-//#define readD7resistorwD8pullup_2byte      // NTC // 2-bytes: ohms // for explanation of the method for reading analog resistance with digital pins see
-//#define readD6ResistorwD8pullup_2byte    // LDR // 2-bytes: ohms // https://thecavepearlproject.org/2019/03/25/using-arduinos-input-capture-unit-for-high-resolution-sensor-readings/
+//#define readD7resistorwD8pullup_2byte    // NTC or LDR or any resistive sensor // 2-bytes:ohms // for explanation of the method for reading analog resistance with digital pins see
+//#define readD6ResistorwD8pullup_2byte    // NTC or LDR or any resistive sensor // 2-bytes:ohms  // https://thecavepearlproject.org/2019/03/25/using-arduinos-input-capture-unit-for-high-resolution-sensor-readings/
                                            // these have to match the connections shown in the build lab!
-//#define readSi7051_Temp_2byte            // 2-bytes: often used for NTC calibration - does not require a library, functions for si7051 at end of program
+//#define readSi7051_Temp_2byte            // 2-bytes: used for NTC calibration - does not require a library, functions for si7051 at end of program
 
 //#define readBh1750_LUX_2byte             // 2-bytes: raw sensor output: gets converted to Lux during download
 
@@ -81,22 +78,21 @@ Note: we still have upper 512 bytes of 328p 1k eeprom availible for OLED screen 
 //#define readSht3x_Humidity_2byte         // 2-bytes
 
 // IF you enable all three BMP or BME outputs
-// you will need two more bytes for an 8-byte record: try adding logLowestBattery_1byte & logRTC_Temperature_1byte 
+// NOTE: you will need two more bytes for an 8-byte record: try adding logLowestBattery_1byte & logRTC_Temperature_1byte 
 //#define readBMP280_Temp_2byte            // 2-bytes
 //#define readBMP280_Pressure_2byte        // 2-bytes
-//#define recordBMP280_Altitude_2byte       // 2-bytes: calculated by library
+//#define recordBMP280_Altitude_2byte      // 2-bytes: calculated by library
 
-//#define recordBMEtemp_2byteInt            // 2-byte NOTE: works with both BMP & BME
-//#define recordBMEpressure_2byteInt        // 2-byte NOTE: works with both BMP & BME
-//#define recordBMEhumidity_2byteInt        // 2-byte ONLY if BME 280 connected!
+//#define recordBMEtemp_2byteInt           // 2-byte NOTE: works with both BMP & BME
+//#define recordBMEpressure_2byteInt       // 2-byte NOTE: works with both BMP & BME
+//#define recordBMEhumidity_2byteInt       // 2-byte ONLY if BME 280 connected!
 
-//#define OLED_64x32_SSD1306                // not a sensor, but enabled with define to include needed library - requires 1000uF rail capacitor!-
+//#define OLED_64x32_SSD1306               // not a sensor, but enabled with define to include needed library - requires 1000uF rail cap to smooth noise from 1306 charge pump!
 
 //r9_b10_g11_gnd12 is the DEFAULT on the e360 logger for the Pulse Width Modulation lab
-#define LED_r9_b10_g11_gnd12               // enables code for RGB indicator LED // 1k limit resistor on shared GND line!
+#define LED_r9_b10_g11_gnd12               // enables code for RGB indicator LED // expects a 1k limit resistor on shared GND!
 //#define LED_GndGB_A0_A2                  // For 2022 2-module build with NO breadboards: red channel leg on led cut, A0gnd Green A1, blue A2, default Red on d13 left in place
-// Red LED on D13 gets used if both of the LED #define statements are commented out
-
+// NOTE" Red LED on D13 gets used if BOTH of the LED #define statements are commented out
 
 //#define countPIReventsPerSampleInterval   // 2-bytes:  saves # of PIR HIGH events in a specified sample interval. Do not enable this with PIRtriggersSensorReadings - choose one or the other
 //#define PIRtriggersSensorReadings         // 4-bytes: Still in beta!   Do not enable this with countPIReventsPerSampleInterval - choose one or the other
@@ -125,7 +121,6 @@ uint8_t SampleIntervalSeconds = 0;            // minutes must be zero for interv
 
 bool ECHO_TO_SERIAL = false;                  // true enables multiple print statements throughout the code via if(ECHO_TO_SERIAL){} // also starts the run with no interval sync delay so timestamps are misaligned
 bool displayMoreOptions = false;              // Flag toggle between Setup and Runtime Menus in void setup_displayStartMenu()
-bool settingsChanged = false;                 // Flag forces backup copy of operating parameters from 1st 64bytes 328p to 1st 64bytes Ext. EEprom
 
 // most VARIABLES below this point stay the SAME on all machines:
 //---------------------------------------------------------------------------
@@ -134,10 +129,10 @@ const char compileDate[] PROGMEM = __DATE__;  //  built-in function in C++ makes
 const char compileTime[] PROGMEM = __TIME__;  //  built-in function in C++ makes text string: 10:04:18
 
 #define EEpromI2Caddr 0x57                    // Run a bus scanner to check where your eeproms are https://github.com/RobTillaart/MultiSpeedI2CScanner
-#define totalBytesOfStorage 4096              // Default: 0x57 / 4096     bytes to use the 4k eeprom on the RTC module 
-// 32k I2C EEprom Module: use 0x50 & 32768    // for 64k eeprom (soldered on top of 4k) usually at 0x50 & 65536 with no address pins pulled high
+#define totalBytesOfStorage 4096              // Default: 0x57 / 4096bytes to use the 4k eeprom on the RTC module 
+// If adding 32k I2C EEprom Module: use 0x50 & 32768      for 64k eeprom (soldered on top of 4k) usually at 0x50 & 65536 with no address pins pulled high
 uint8_t sensorBytesPerRecord = 0;             // INCREMENTED at the beginning of setup to match #defined sensors. MUST divide evenly into EEprom Page buffer AND fit inside I2C buffer
-uint32_t EEmemPointer = 64;                   // first 64 bytes reserved for backup, a counter that advances through the EEprom memory locations by sensorBytesPerRecord at each pass through the main loop
+uint32_t EEmemPointer = 0;                   // a counter that advances through the EEprom memory locations by sensorBytesPerRecord at each pass through the main loop //first 64 bytes eeprom are reserved for parameter backup
 
 #ifdef logFreeVariableMemory_2byte
 uint16_t freeVariableMemory = 0;              // for debugging or powers of two memory balancing
@@ -155,8 +150,8 @@ volatile uint8_t adc_interrupt_counter;       // incremented in readADCLowNoise 
 //defines & variables for DS3231 RTC
 //------------------------------------------------------------------------------
 
-#define RTC_TempRangeOffset 80                // 80 shifts 63degree range of 1byte encoding by +(80/4)C to handle COLD temps: -20C to +43.5C
-                                              // change this Offset to 40 for WARMER climate deployments to set the range to: -10C to +53.5C
+#define RTC_TempRangeOffset 80                // 80 shifts 63degree range of 1byte encoding by +(80/4)C to handle COLDER temps: -20C to +43.5C
+                                              // change this Offset to 40 for WARMER climate deployments in range from: -10C to +53.5C
 #define rtcAlarmInputPin 2                    // DS3231's SQW output is connected to interrupt0 pin D2 on the ProMini
 #define DS3231_ADDRESS     0x68               // this is the I2C bus address of our RTC chip
 #define DS3231_STATUS_REG  0x0F               // reflects status of internal operations
@@ -164,13 +159,11 @@ volatile uint8_t adc_interrupt_counter;       // incremented in readADCLowNoise 
 #define DS3231_TMP_UP_REG  0x11               // temperature registers (upper byte 0x11 & lower 0x12) gets updated every 64sec
 #define DS3231_AGING_OFFSET_REG 0x10          // Aging offset register
 uint8_t AlarmSelectBits;                      // sets which parts of time to use or ignore for nxt alarm // ALRM1_SET bits and ALRM2_SET are 0b1000 and 0b0111 respectively.
-//uint32_t loggerStartTime;                     // uint32_t is large enough to hold the 10-digit unixtime number
-char CycleTimeStamp[] = "0000/00/00,00:00:00";   //16 character array to store human readble time (with seconds)
-uint8_t t_second,t_minute,t_hour,t_day,t_month; // current time variables populated by calling RTC_DS3231_getTime()
+uint8_t t_second,t_minute,t_hour,t_day,t_month;       // current time variables populated by calling RTC_DS3231_getTime()
 uint16_t t_year;                              //current year //note: yOff = raw year to which you need to add 2000
-uint8_t Alarmday,Alarmhour,Alarmminute,Alarmsecond; // calculated variables for setting next alarm
+uint8_t Alarmday,Alarmhour,Alarmminute,Alarmsecond;   // calculated variables for setting next alarm
 volatile boolean rtc_INT0_Flag = false;       // used in startup time sync delay //volatile because it's changed in an ISR // rtc_d2_alarm_ISR() sets this boolean flag=true when RTC alarm wakes the logger
-float rtc_TEMP_degC = 0.0;
+int16_t rtc_TEMP_degCx4 = 0;                  // NOTE saved rtc_TEMP is encoded to only one BYTE
 bool DS3231_PowerLossFlag = false;
 
 // temporary 'buffer' variables only used during calculations
@@ -178,11 +171,11 @@ bool DS3231_PowerLossFlag = false;
 bool booleanBuffer;                           // boolean for functions that return a true/false or 1/0
 uint8_t byteBuffer1 = 9;                      // 1-byte (8 bit) type = unsigned number from 0 to 255
 uint8_t byteBuffer2 = 9;                      // note: uint8_t is the same as byte variable type
-int16_t int16_Buffer = 9999;                 // 2-byte from -32,768 to 32,767
+int16_t int16_Buffer = 9999;                  // 2-byte from -32,768 to 32,767
 uint16_t uint16_Buffer= 9999;                 // 2-byte from 0 to 65535
-int32_t int32_Buffer = 9999;                // 4-byte from -2,147,483,648 to 2,147,483,647
+int32_t int32_Buffer = 9999;                  // 4-byte from -2,147,483,648 to 2,147,483,647
 uint32_t uint32_Buffer= 9999;                 // 4-byte from 0 to 4,294,967,295 //used for millis() timing
-float floatBuffer = 9999.99;                   // for float calculations
+float floatBuffer = 9999.99;                  // for float calculations
 uint8_t hiByte,loByte;                        // for splitting 16-byte integers during EEprom save
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++   
@@ -208,18 +201,18 @@ volatile boolean d3_INT1_Flag = false;
 
 #ifdef readD7resistorwD8pullup_2byte 
 //----------------------------------
-  uint32_t D7resistor_NewReading;                // max of 65535 limits our ability to measure 10kNTC at temps below zero C!
+  uint32_t D7resistor_NewReading;           // max of 65535 limits our ability to measure 10kNTC at temps below zero C!
 #endif
 
 #ifdef readD6ResistorwD8pullup_2byte 
 //----------------------------------
-  uint32_t D6resistor_NewReading;                // NOTE this OVERFLOWS if resistance > 65535
+  uint32_t D6resistor_NewReading;           // NOTE this OVERFLOWS if resistance > 65535
 #endif
 #if defined(readD7resistorwD8pullup_2byte) || defined(readD6ResistorwD8pullup_2byte)
 //------------------------------------------------
-  #define referenceResistorValue 32768UL    //  ARBITRARY value that should be 'close' to actual but precise value is not required  //https://hackingmajenkoblog.wordpress.com/2016/08/12/measuring-arduino-internal-pull-up-resistors/
+  #define referenceResistorValue 32768UL    //  ARBITRARY value that should be 'close' to actual ohms but precise is not required  //https://hackingmajenkoblog.wordpress.com/2016/08/12/measuring-arduino-internal-pull-up-resistors/
   volatile boolean triggered;               //  volatiles needed for all digital pin reading of resistance:        
-  volatile uint16_t timer1CounterValue;     //  prepareForInterrupts(), ISR (TIMER1_OVF_vect), ISR (TIMER1_CAPT_vect),ReadD6riseTimeOnD8
+  volatile uint16_t timer1CounterValue;     //  prepareForInterrupts(), ISR (TIMER1_OVF_vect), ISR (TIMER1_CAPT_vect), ReadD6riseTimeOnD8
 #endif
 
 #ifdef readBh1750_LUX_2byte 
@@ -240,7 +233,7 @@ volatile boolean d3_INT1_Flag = false;
 
   #include <SHT85.h> // https://github.com/RobTillaart/SHT85/tree/master
   #define ShtRH_ADDRESS   0x44              // two address options: 0x44 & 0x45
-  float Sht3x_Temp_degC,Sht3x_RH_percent;
+  float Sht3x_Temp_degC,Sht3x_RH_percent;   // floats converted to integer before saving - preserving two decimal places
   SHT85 sht3x(ShtRH_ADDRESS);
   //uint16_t Sht3x_Temp_RawInt,Sht3x_RH_RawInt; //library also supports raw integer output
 #endif
@@ -251,6 +244,7 @@ volatile boolean d3_INT1_Flag = false;
   BMP280_DEV bmp280;                      // Instantiate (create) a BMP280_DEV object and set-up for I2C operation
   #define BMP280_Address 0x76
   float Bmp280_Temp_degC, Bmp280_Pr_mBar, Bmp280_altitude_m;  // Variables for sensor output
+  // NOTE these floats get converted into 16-bit ints before saving to EEprom
 #endif
 
 #if defined(recordBMEtemp_2byteInt) || defined(recordBMEpressure_2byteInt) || defined(recordBMEhumidity_2byteInt)
@@ -263,9 +257,9 @@ volatile boolean d3_INT1_Flag = false;
   // humidity does not have oversampling
   
   ForcedBME280 climateSensor = ForcedBME280();
-  int32_t g_temperature;  // current temperature with 2 decimal places embedded in the integer
-  uint32_t g_pressure;    // current pressure             "
-  uint32_t g_humidity;    // current humidity             "
+  int32_t Bmx_temperature;  // current temperature with 2 decimal places ALREADY embedded in the integer by the library
+  uint32_t Bmx_pressure;    // current pressure             "
+  uint32_t Bme_humidity;    // current humidity             "
 #endif
 
 #ifdef readSi7051_Temp_2byte 
@@ -455,7 +449,7 @@ void setup () {
   
   SampleIntervalMinutes = EEPROM.read(4);                       // retrieve 'previous' sampling interval data stored in the CPU's internal 1024 bytes of eeprom space
   SampleIntervalSeconds = EEPROM.read(5);                       // these numbers will be random the first time the logger is run because the EEprom memory locations are empty
-  if((SampleIntervalMinutes>60) || (SampleIntervalSeconds>30))  //if values read from eeprom are outside allowed maximums then reset to 'safe' default values
+  if((SampleIntervalMinutes>60) || (SampleIntervalSeconds>30))  // if values read from eeprom are outside allowed maximums then reset to 'safe' default values
     { SampleIntervalMinutes=15;SampleIntervalSeconds=0;
       EEPROM.update(4,SampleIntervalMinutes); 
       EEPROM.update(5,SampleIntervalSeconds); }                 // .update is the same as .put, except that it only writes the data if there is a change - eeprom has a limited # of write cycles
@@ -508,14 +502,14 @@ do { command = Serial.readStringUntil('\n');                  // read serial mon
 
     // here we are using if statements to check the input instead of the switch / case method used above, goFlagReceived only becomes 'true' with valid input
     if(command == "start"){ 
-      Serial.println(F("Erasing EEprom: Stay on UART power until done"));
+      Serial.print(F("Erasing EEprom: Stay on UART power until done"));
       //------------------------------------------------------------------------------
-                
-      for (uint32_t memoryLocation=64; memoryLocation<totalBytesOfStorage; memoryLocation+=16){  // loop writes 16-bytes at a time into the I2C buffer
+                 
+      for (uint32_t memoryLocation = 0; memoryLocation<totalBytesOfStorage; memoryLocation+=16){  // loop writes 16-bytes at a time into the I2C buffer
           Wire.beginTransmission(EEpromI2Caddr);
           Wire.write(highByte(memoryLocation));               // sends only the HiByte of the 2-byte integer address
           Wire.write(lowByte(memoryLocation));                // send only the LowByte of the address
-          for (byte k=0; k<16; k++) { Wire.write(0);}         // we are loading the I2C buffer with 16 'zeros' each time
+          for (byte k=0; k<16; k++) { Wire.write(0xFF);}      // we are loading the I2C buffer with '255' each time
           Wire.endTransmission();                             // only at this command does the I2C bus transmission actually occcur
 
           // here we use modulo to print a progress dots in the serial monitor as the memory erase proceeds // also generates a return when memoryLocation=0
@@ -676,8 +670,6 @@ Serial.println(F("& Starting the logger:"));Serial.flush();
 RTC_DS3231_getTime();                     // populates the global variables t_day, t_hour, etc.
 
   Alarmday = t_day; Alarmhour = t_hour;
-  //AlarmSelectBits = 0b00001000;               // A1 Alarm when hours, minutes and seconds match
-  //AlarmSelectBits = 0b00000000;               // A1 Alarm when day of month, hours, minutes and seconds match
 
   if(SampleIntervalSeconds>0){    // NOTE: if the sample interval is in seconds this delay can be VERY short
       Alarmminute = t_minute;  Alarmsecond = t_second + 1;    
@@ -709,6 +701,8 @@ RTC_DS3231_getTime();                     // populates the global variables t_da
 
   // NOW set the 1st -ALIGNED- wakeup alarm:
   AlarmSelectBits = 0b00001100;             // A1 Alarm when minutes AND seconds match, ignores days, hours
+                                            // AlarmSelectBits = 0b00001000; = A1 Alarm when hours, minutes and seconds match
+                                            // AlarmSelectBits = 0b00000000; = A1 Alarm when day of month, hours, minutes and seconds match
   RTC_DS3231_setA1Time(0, 0, Alarmminute, Alarmsecond, AlarmSelectBits, 0, 0, 0);
   RTC_DS3231_turnOnAlarm(1);                // alarm will break the logger out of flashing RED&BLUE light sync delay that follows
   noInterrupts ();                          // make sure we don't get interrupted before we sleep
@@ -716,6 +710,7 @@ RTC_DS3231_getTime();                     // populates the global variables t_da
   attachInterrupt(0,rtc_d2_alarm_ISR, LOW); // RTC SQW alarms LOW and is connected to pin D2 which is interupt channel 0
   rtc_INT0_Flag=false;                      // Flag gets set TRUE only inside rtc_d2_alarm_ISR ISR
   interrupts ();
+
 //---------------------------------------------------------------------------------------------- 
 // calculate and save UNIXtime for the wakup alarm we just set // same calculation used in function: RTC_DS3231_unixtime():
 // we are doing it here because UART is still connected to supply power for the internal eeprom saving which draws alot of current (8mA for EEprom + 5mA for ProMini)
@@ -728,45 +723,10 @@ RTC_DS3231_getTime();                     // populates the global variables t_da
     previousPIRtriggerTime = uint32_Buffer;
   #endif
 
-//------------------------------------------------------------------------------  
-// Transfer BACKUP COPY of starting parameters in bytes 0-64 internal 328p eeprom into 0-64 bytes of external eeprom
-// done in four steps because wire buffer can only transfer 16 bytes at a time
-
-if(settingsChanged){ // any time an operating parameter is changed by one of the startup menu options backup all 64 bytes
-
-  Wire.beginTransmission(EEpromI2Caddr);    // physicalEEpromAddr = block[0];   
-  Wire.write(0); Wire.write(0);             // two bytes to specify the external eeprom address
-  for (uint8_t p = 0; p < 16; p++) { byteBuffer1 = EEPROM.read(p); Wire.write(byteBuffer1);}
-  Wire.endTransmission(); 
-  delay(11); // AT24c32 Self-Timed Write Cycle (10 ms max)
-  
-  Wire.beginTransmission(EEpromI2Caddr);          
-  Wire.write(0); Wire.write(16);       
-  for (uint8_t q = 16; q < 32; q++) { byteBuffer1 = EEPROM.read(q); Wire.write(byteBuffer1);}
-  Wire.endTransmission(); delay(11);
-
-  Wire.beginTransmission(EEpromI2Caddr);          
-  Wire.write(0); Wire.write(32);       
-  for (uint8_t r = 32; r < 48; r++) { byteBuffer1 = EEPROM.read(r); Wire.write(byteBuffer1);}
-  Wire.endTransmission(); delay(11);  
-
-  Wire.beginTransmission(EEpromI2Caddr);          
-  Wire.write(0); Wire.write(48);      
-  for (uint8_t s = 48; s < 64; s++) { byteBuffer1 = EEPROM.read(s); Wire.write(byteBuffer1);}
-  Wire.endTransmission(); delay(11); 
-
-} else{   // ALWAYS copy the logger start time & sampling intervals (used for timestamp reconstruction)
-
-  Wire.beginTransmission(EEpromI2Caddr);   // physicalEEpromAddr = block[0];   
-  Wire.write(0); Wire.write(0);            // two bytes to specify the external eeprom address
-  for (uint8_t p = 0; p < 6; p++) { byteBuffer1 = EEPROM.read(p); Wire.write(byteBuffer1);}
-  Wire.endTransmission();
-  
-} //if(settingsChanged){ 
 
 //------------------------------------------------------------------------------  
-  Serial.println(F("B&G LEDs 'flicker' for SyncDelay til 1stRead, then GREEN pips @sampleTime")); 
-  Serial.println(F("--- If you don't observe the 'flicker' then restart the logger again ---"));
+  Serial.println(F("Bl&Gr LEDs 'flicker' for SyncDelay til 1stRead, then GREEN pips @sample time")); 
+  Serial.println(F("-If you don't observe the 'flicker' then restart the logger!-"));
   if(!ECHO_TO_SERIAL){          // if it's not being used, shut down the UART peripheral now to save power
     Serial.println(F("Disconnect UART now - NO additional messages will be sent over serial.")); Serial.flush();
         // power_usart0_disable();          // we waited until this point because the startup input menu requires serial input via the UART
@@ -878,12 +838,12 @@ turnOffAllindicatorLEDs();
     }
 
 
-#ifdef logRTC_Temperature_1byte
-      rtc_TEMP_degC = RTC_DS3231_getTemp();               // moved this code into its own function
+  #ifdef logRTC_Temperature_1byte
+    rtc_TEMP_degCx4 = RTC_DS3231_getTemp();
       if(ECHO_TO_SERIAL){
-        Serial.print(F(", RTC temp[°C]:"));Serial.print(rtc_TEMP_degC,2);Serial.flush();
+        Serial.print(F("RTC[°C]: "));floatBuffer=rtc_TEMP_degCx4/4.0;Serial.print(floatBuffer,2);
       } 
-#endif
+  #endif
 
     LowPower.powerDown(SLEEP_15MS, ADC_OFF, BOD_OFF);
     turnOffAllindicatorLEDs();
@@ -899,13 +859,13 @@ turnOffAllindicatorLEDs();
 #ifdef logFreeVariableMemory_2byte
     freeVariableMemory = freeRam();                   
     if(ECHO_TO_SERIAL){
-        Serial.print(F(", Variable Memory (bytes):"));Serial.print(freeVariableMemory);Serial.flush();
+        Serial.print(F(", VarMem(bytes):"));Serial.print(freeVariableMemory);Serial.flush();
         }
 #endif
   
 #ifdef logLowestBattery_1byte
       if(ECHO_TO_SERIAL){ 
-      Serial.print(F(", Lowest Bat[mV]:"));Serial.print(LowestBattery);Serial.flush();
+      Serial.print(F(", LowBat[mV]:"));Serial.print(LowestBattery);Serial.flush();
       }
  #endif
 
@@ -933,7 +893,7 @@ turnOffAllindicatorLEDs();
   D7resistor_NewReading = ReadD7riseTimeOnD8();                // a complex function at the end of this program
   D7resistor_NewReading = (referenceResistorValue * D7resistor_NewReading) / uint32_Buffer;
   if(ECHO_TO_SERIAL){
-    Serial.print(F(",  D7r[Ω]:"));Serial.print(D7resistor_NewReading);Serial.flush();
+    Serial.print(F(",  D7[Ω]:"));Serial.print(D7resistor_NewReading);Serial.flush();
     }  
 #endif
 
@@ -942,7 +902,7 @@ turnOffAllindicatorLEDs();
   D6resistor_NewReading = ReadD6riseTimeOnD8();
   D6resistor_NewReading = (referenceResistorValue * D6resistor_NewReading) / uint32_Buffer;
       if(ECHO_TO_SERIAL){
-        Serial.print(F(" D6r[Ω]:"));Serial.println(D6resistor_NewReading);Serial.flush();
+        Serial.print(F(" D6[Ω]:"));Serial.println(D6resistor_NewReading);Serial.flush();
       }  
 #endif
 
@@ -1031,16 +991,16 @@ turnOffAllindicatorLEDs();
    climateSensor.takeForcedMeasurement();
    LowPower.powerDown(SLEEP_30MS, ADC_OFF, BOD_OFF);//At lowest resoluton this should be plenty of time 
    #if defined(recordBMEtemp_2byteInt)
-    g_temperature = climateSensor.getTemperatureCelsius();
-    if(ECHO_TO_SERIAL){Serial.print(F(" BmeT: "));Serial.print(g_temperature/100);Serial.print(F("."));Serial.print(g_temperature%100);Serial.print(F("°C"));}
+    Bmx_temperature = climateSensor.getTemperatureCelsius();
+    if(ECHO_TO_SERIAL){Serial.print(F(" BmeT: "));Serial.print(Bmx_temperature/100);Serial.print(F("."));Serial.print(Bmx_temperature%100);Serial.print(F("°C"));}
    #endif
    #if defined(recordBMEpressure_2byteInt)
-    g_pressure = climateSensor.getPressure();
-    if(ECHO_TO_SERIAL){Serial.print(F(" BmePr: "));Serial.print(g_pressure/100);Serial.print(F("."));Serial.print(g_pressure%100);Serial.print(F("hPa"));}
+    Bmx_pressure = climateSensor.getPressure();
+    if(ECHO_TO_SERIAL){Serial.print(F(" BmePr: "));Serial.print(Bmx_pressure/100);Serial.print(F("."));Serial.print(Bmx_pressure%100);Serial.print(F("hPa"));}
    #endif
    #if defined(recordBMEhumidity_2byteInt)
-    g_humidity = climateSensor.getRelativeHumidity();
-    if(ECHO_TO_SERIAL){Serial.print(F(" BmeRh: "));Serial.print(g_humidity/100);Serial.print(F("."));Serial.print(g_humidity%100);Serial.print(F("%"));}
+    Bme_humidity = climateSensor.getRelativeHumidity();
+    if(ECHO_TO_SERIAL){Serial.print(F(" BmeRh: "));Serial.print(Bme_humidity/100);Serial.print(F("."));Serial.print(Bme_humidity%100);Serial.print(F("%"));}
    #endif
     if(ECHO_TO_SERIAL){Serial.println();Serial.flush();}
 #endif
@@ -1116,42 +1076,39 @@ turnOffAllindicatorLEDs();
 //---------------------------------------------------------------------------------
 // NOW load the sensor variables - one byte at a time - into the I2C transmission buffer with Wire.write statements
 // ORDER of loading here MUST EXACTLY MATCH the order of the bytes retrieved in the startMenu_sendData2Serial function
-// ALSO NOTE we are using ZEROs as our END OF FILE marker to stop the download ( this is why we filled the eeprom with zeros at startup)
-// So we must implement a 'zero trap' but ONLY ON THE FIRST byte of each record, bumping it to '1' if it actualy was zero - this occasionally causes a data error
+// ALSO NOTE we are using 3x 0xFF as our END OF FILE marker to stop the download (Erased eeproms typically have all bits set to 1)
+// So we must implement various 'traps' to prevent 3 successive 0xFF's from being saved in the data
 
 #ifdef PIRtriggersSensorReadings  
-  //how to slice a 4-byte LONG uint32_t into individual bytes:  & 0b11111111   extracts only the  lowest eight bits
-  d3_INT1_elapsedSeconds++;   //++ as a zero-trap for first byte of the record
-  
+  //how to slice a 4-byte LONG uint32_t into individual bytes:  & 0b11111111   extracts only the lowest eight bits
   loByte = d3_INT1_elapsedSeconds & 0b11111111; 
     Wire.write(loByte);       // byte 1 (the lowest byte)
   byteBuffer1 = (d3_INT1_elapsedSeconds >> 8) & 0b11111111;
     Wire.write(byteBuffer1);  // byte 3
   byteBuffer2 = (d3_INT1_elapsedSeconds >> 16) & 0b11111111;
+  if(byteBuffer2==255){byteBuffer2=254;}          
+  // Trapping 0xFF to preserve End of Data check in startMenu_sendOPDreadings2Serial
+  // NOTE: this trap will cause an error after 8,388,607 seconds = 97 days!
     Wire.write(byteBuffer2);  // byte 2
   hiByte = (d3_INT1_elapsedSeconds >> 24) & 0b11111111;
     Wire.write(hiByte);       // byte 4 (the highest byte)
 #endif
 
-#ifdef logLowestBattery_1byte                           // INDEX compression converts lowBattery reading to # less than 255 which can be stored in one byte eeprom memory location
+#ifdef logLowestBattery_1byte                     // INDEX compression converts lowBattery reading to # less than 255 which can be stored in one byte eeprom memory location
 //-------------------------------------------------------------------------------------------------------
-  int16_Buffer = (LowestBattery-1700)/16;        // index compression looses some data due to rounding error  - so record is reduced to only 16mv/bit resolution
+  int16_Buffer = (LowestBattery-1700)/16;         // index compression looses some data due to rounding error  - so record is reduced to only 16mv/bit resolution
   byteBuffer1 = lowByte(int16_Buffer);
-  if(byteBuffer1<1){byteBuffer1=1;}               // ONLY THE FIRST data byte in each record must have a ZERO TRAP to preserve End Of Data indicator in EEprom
+  if(byteBuffer1==255){byteBuffer1=254;}          // Trapping 0xFF to preserve End of Data check in startMenu_sendOPDreadings2Serial
         Wire.write(byteBuffer1);                  // write that single compressed byte to eeprom (we will have to expand it back later !) 
 #endif //logLowestBattery_1byte
 
-#ifdef logRTC_Temperature_1byte                         // NOTE: this 1-byte COMPRESSED encoding limits our temperature range to 0-63 degrees 
+#ifdef logRTC_Temperature_1byte                   // NOTE: this 1-byte COMPRESSED encoding limits our temperature range to 0-63 degrees 
 //--------------------------------------------------------------------------------------------------------
-  floatBuffer = (rtc_TEMP_degC + 10.0)*4;         // *4 converts the RTC temperature into a small integer (63*4= 252 - within the range of one byte!)
-  int16_Buffer = (int)(floatBuffer);             // adding 10 shifts the 63 degree range, so we can record -10C to +53C  // there is no loss of information because the resolution is only 0.25C 
-       
-  if(int16_Buffer>255){int16_Buffer=255;}       // temps above 53 C get clipped because a byte cant represent them
-  if(int16_Buffer<1){int16_Buffer=1;}           // Zero Trap to preserve End of Data check, this sets lower cutoff temp to -9.75C (but our coincell is dead before that)
-
+  int16_Buffer = rtc_TEMP_degCx4 + RTC_TempRangeOffset; // add 8*10 shifts the 4xInt 63 degree range by 20C, so we can record -20C to +43C with no loss of information because the resolution is only 0.25C              
+  if(int16_Buffer>254){int16_Buffer=254;}         // ONLY THE FIRST data byte saved in each record must have a ZERO TRAP to preserve zero EOF indicators in EEprom
+  if(int16_Buffer<0){int16_Buffer=0;}
   byteBuffer1 = lowByte(int16_Buffer);
-  //if(byteBuffer1<1){byteBuffer1=1;}             // ONLY THE FIRST data byte saved in each record must have a ZERO TRAP to preserve zero EOF indicators in EEprom
-        Wire.write(byteBuffer1); 
+    Wire.write(byteBuffer1); 
 #endif //logRTC_Temperature_1byte
 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -1172,17 +1129,15 @@ turnOffAllindicatorLEDs();
 
 #ifdef readD7resistorwD8pullup_2byte
 //---------------------------------
-// D7resistor_NewReading changed to 4-byte uint32 to avoid overflows in intermediate calculations
-// but we only record the lowest two of those bytes 
+// D7resistor_NewReading changed to 4-byte uint32 to avoid calculation overflows
+// but we only record the lowest two of those bytes here
 // this requires bitmath extraction of high & low bytes for eeprom storage
   uint32_Buffer = D7resistor_NewReading; 
-    if (uint32_Buffer>65534){uint32_Buffer=65534;}   // Catch uint16_t Overflow
-  byteBuffer1   = uint32_Buffer & 0b11111111; // lobyte
-  if(byteBuffer1<1){byteBuffer1=1;}           // -ONLY 1st byte of record -needs to preserve zero EOF indicator in 'empty' EEprom space
-    Wire.write(byteBuffer1);
-  
+    if (uint32_Buffer>65534){uint32_Buffer=65534;}    // Prevents uint16_t Overflow  & Traps 0xFF
+  byteBuffer1   = uint32_Buffer & 0b11111111;         // lobyte
+    Wire.write(byteBuffer1); 
   uint32_Buffer = uint32_Buffer>>8;
-  byteBuffer2   = uint32_Buffer & 0b11111111; // highByte
+  byteBuffer2   = uint32_Buffer & 0b11111111;         // highByte
     Wire.write(byteBuffer2);
 #endif // #ifdef readNTC_D6refD7ntc
 
@@ -1191,20 +1146,18 @@ turnOffAllindicatorLEDs();
 // D6resistor_NewReading changed to 4-byte uint32 to avoid calculation overflows
 // this requires bitmath extraction of high & low bytes for eeprom storage
   uint32_Buffer = D6resistor_NewReading; 
-    if (uint32_Buffer>65534){uint32_Buffer=65534;}   // Catch uint16_t Overflow
-  byteBuffer1   = uint32_Buffer & 0b11111111; //lobyte
-  if(byteBuffer1<1){byteBuffer1=1;}           // -ONLY 1st byte of record -needs to preserve zero EOF indicator in 'empty' EEprom space
-    Wire.write(byteBuffer1);
-  
+    if (uint32_Buffer>65534){uint32_Buffer=65534;}    // Prevents uint16_t Overflow  // & Trapping 0xFF
+  byteBuffer1   = uint32_Buffer & 0b11111111;         //lobyte
+    Wire.write(byteBuffer1); 
   uint32_Buffer = uint32_Buffer>>8;
-  byteBuffer2   = uint32_Buffer & 0b11111111; //highByte
+  byteBuffer2   = uint32_Buffer & 0b11111111;         //highByte
     Wire.write(byteBuffer2);
 #endif // #ifdef readD6ResistorwD8pullup_2byte
 
 #ifdef readBh1750_LUX_2byte
-//--------------------
-  loByte = lowByte(lux_BH1750_RawInt);          // first byte of record gets checked by 
-  //if(loByte<1){loByte=1;}                     // -ONLY 1st byte of record -needs to preserve zero EOF indicator in 'empty' EEprom space
+//-------------------------
+  if (lux_BH1750_RawInt==65535){lux_BH1750_RawInt=65534;}  // Trap 0xFF to preserve EOF check in startMenu_sendOPDreadings2Serial
+  loByte = lowByte(lux_BH1750_RawInt);
         Wire.write(loByte);
   hiByte = highByte(lux_BH1750_RawInt);
         Wire.write(hiByte);  
@@ -1215,22 +1168,17 @@ turnOffAllindicatorLEDs();
   Sht3x_RH_percent = Sht3x_RH_percent*100.00;   // convert float reading to integer preserving two decimal places
   int16_Buffer = (int16_t)Sht3x_RH_percent;  
   loByte = lowByte(int16_Buffer);               // first byte of record gets checked by 
-  //if(loByte<1){loByte=1;}                     // if needed to preserve zero EOF indicator in 'empty' EEprom space if single sensor
         Wire.write(loByte);
   hiByte = highByte(int16_Buffer);
         Wire.write(hiByte);  
 #endif
 
-#ifdef readSht3x_Temp_2byte                    // Sht30 resolution is only: 0.01°C and 0.01%RH
-  // SHIFT the temps +10C so that we can reconstruct with 65535 range of uint16_t
-  // giving us a range of -10C to +55.534C before calc fails
-  Sht3x_Temp_degC = Sht3x_Temp_degC + 10.0;
-  Sht3x_Temp_degC = Sht3x_Temp_degC*100.00;     // converts float to integer preserving two decimal places
-  uint16_Buffer = (uint16_t)Sht3x_Temp_degC;    // Resolution is only 0.01 °C, so only preserve two decimal places
-  loByte = lowByte(uint16_Buffer);              // first byte of record gets checked by 
-  //if(loByte<1){loByte=1;}                     // to preserve zero EOF indicator in 'empty' EEprom space if single sensor
+#ifdef readSht3x_Temp_2byte                     // Sht30 resolution is only: 0.01°C and 0.01%RH
+  Sht3x_Temp_degC = Sht3x_Temp_degC*100.00;     // convert float reading to integer preserving two decimal places
+  int16_Buffer = (int16_t)Sht3x_Temp_degC;  
+  loByte = lowByte(int16_Buffer);               // first byte of record gets checked by 
         Wire.write(loByte);
-  hiByte = highByte(uint16_Buffer);
+  hiByte = highByte(int16_Buffer);
         Wire.write(hiByte); 
 #endif
 
@@ -1238,7 +1186,6 @@ turnOffAllindicatorLEDs();
   Bmp280_Temp_degC = Bmp280_Temp_degC*100.00;   //convert float reading to integer preserving two decimal places
   int16_Buffer = (int16_t)Bmp280_Temp_degC;  
   loByte = lowByte(int16_Buffer);               // first byte of record gets checked by 
-  //if(loByte<1){loByte=1;}                     // to preserve zero EOF indicator in 'empty' EEprom space
         Wire.write(loByte);
   hiByte = highByte(int16_Buffer);
         Wire.write(hiByte);  
@@ -1247,8 +1194,7 @@ turnOffAllindicatorLEDs();
 #ifdef readBMP280_Pressure_2byte
   Bmp280_Pr_mBar = Bmp280_Pr_mBar*10.0;         //convert float reading to integer preserving ONE decimal place
   int16_Buffer = (int16_t)Bmp280_Pr_mBar;  
-  loByte = lowByte(int16_Buffer);              // first byte of record gets checked by 
-  //if(loByte<1){loByte=1;}                     // to preserve zero EOF indicator in 'empty' EEprom space
+  loByte = lowByte(int16_Buffer);               // first byte of record gets checked by 
         Wire.write(loByte);
   hiByte = highByte(int16_Buffer);
         Wire.write(hiByte);     
@@ -1256,67 +1202,69 @@ turnOffAllindicatorLEDs();
 
 #ifdef recordBMP280_Altitude_2byte
   Bmp280_altitude_m = Bmp280_altitude_m*100.00;     //convert float reading to integer preserving two decimal places
-  int16_Buffer = (int16_t)Bmp280_altitude_m;   // Note: *100 overuns the int at higher altitudes - switch to *10
-  loByte = lowByte(int16_Buffer);              // first byte of record gets checked by 
-  //if(loByte<1){loByte=1;}                     // to preserve zero EOF indicator in 'empty' EEprom space
+  int16_Buffer = (int16_t)Bmp280_altitude_m;    // Note: *100 overuns the int at higher altitudes - switch to *10
+  loByte = lowByte(int16_Buffer);               // first byte of record gets checked by 
         Wire.write(loByte);
   hiByte = highByte(int16_Buffer);
         Wire.write(hiByte);  
 #endif
 
-#ifdef recordBMEtemp_2byteInt       // stored in int32_t g_temperature with 2 decimals 'embedded' in the integer
+#ifdef recordBMEtemp_2byteInt            // stored in int32_t Bmx_temperature with 2 decimals 'embedded' in the integer
 //---------------------------
-  int16_Buffer = g_temperature;     // room in int16 to ±32,000 so no danger of overflow
+  int16_Buffer = Bmx_temperature;        // room in int16 to ±32,000 so no danger of overflow
   loByte = lowByte(int16_Buffer); 
-  if(loByte<1){loByte=1;} // low byte first for zero trapping on sensor readings - this can introduce error on lowest bit
       Wire.write(loByte);
   hiByte = highByte(int16_Buffer);
       Wire.write(hiByte);
 #endif
 
-#ifdef recordBMEpressure_2byteInt       // stored in int32_t g_pressure with 2 decimals 'embedded' in the integer
+#ifdef recordBMEpressure_2byteInt        // library returns int32_t Bmx_pressure with 2 decimals 'embedded' in the integer
 //-------------------------------
-  uint16_Buffer = g_pressure - 80000;  // -80000 for SCALING to fit into uint16 with two preserved decimal places
+  uint16_Buffer = Bmx_pressure - 80000;  // -80000 for SCALING to fit into uint16 with two preserved decimal places
+  if(uint16_Buffer==65535){uint16_Buffer=65534;} // Traps 0xFF to preserve EOF check in startMenu_sendOPDreadings2Seriall
   loByte = lowByte(uint16_Buffer); 
-  if(loByte<1){loByte=1;} // low byte first for zero trapping on sensor readings - this can introduce error on lowest bit
       Wire.write(loByte);
   hiByte = highByte(uint16_Buffer);
       Wire.write(hiByte);
 #endif
 
-#ifdef recordBMEhumidity_2byteInt       // stored in int32_t g_humidity with 3 decimals 'embedded' in the integer
+#ifdef recordBMEhumidity_2byteInt       // stored in int32_t Bme_humidity with 3 decimals 'embedded' in the integer
 //-------------------------------
-  uint16_Buffer = g_humidity;
+  uint16_Buffer = Bme_humidity;
+  if(uint16_Buffer==65535){uint16_Buffer=65534;}
   loByte = lowByte(uint16_Buffer); 
-  if(loByte<1){loByte=1;} // low byte first for zero trapping on sensor readings - this can introduce error on lowest bit
       Wire.write(loByte);
   hiByte = highByte(uint16_Buffer);
       Wire.write(hiByte);
 #endif
 
-#ifdef logCurrentBattery_2byte                      // stores the 'raw' 16-byte integer using two bytes (ie with no compression)
+#ifdef logCurrentBattery_2byte                // stores the 'raw' 16-byte integer using two bytes (ie with no compression)
 //-----------------------------------------------------------------------------------------------------------------------
-  loByte = lowByte(CurrentBattery);           // note: we save the low byte first because it is almost never zero
+  uint16_Buffer = CurrentBattery;
+  if(uint16_Buffer==65535){uint16_Buffer=65534;}
+  loByte = lowByte(uint16_Buffer);
         Wire.write(loByte);                   // first byte added to I2C buffer
-  //if(loByte<1){loByte=1;}                   // ONLY THE FIRST data byte saved in each record must have a ZERO TRAP to preserve zero EOF indicators in EEprom
-  hiByte = highByte(CurrentBattery);
+  hiByte = highByte(uint16_Buffer);
         Wire.write(hiByte);                   // 2nd byte of data added to I2C buffer 
 #endif //logCurrentBattery_2byte
 
-#ifdef logFreeVariableMemory_2byte             // stores the 'raw' 16-byte integer using two bytes (ie with no compression)
+#ifdef logFreeVariableMemory_2byte            // stores the 'raw' 16-byte integer using two bytes (ie with no compression)
 //-----------------------------------------------------------------------------------------------------------------------
-  loByte = lowByte(freeVariableMemory);
+  uint16_Buffer = freeVariableMemory;
+  if(uint16_Buffer==65535){uint16_Buffer=65534;}
+  loByte = lowByte(uint16_Buffer);
         Wire.write(loByte);              
-  hiByte = highByte(freeVariableMemory);
+  hiByte = highByte(uint16_Buffer);
         Wire.write(hiByte);  
 #endif //logFreeVariableMemory_2byte
 
 #ifdef readSi7051_Temp_2byte                         // stores the 'raw' 16-byte integer using two bytes (ie with no compression)
 //-----------------------------------------------------------------------------------------------------------------------
-  loByte = lowByte(TEMP_si7051);              //NOTE TEMP_si7051 overruns this uint16_t if temps >40C!
+  uint16_Buffer = TEMP_si7051;
+  if(uint16_Buffer==65535){uint16_Buffer=65534;}
+  loByte = lowByte(uint16_Buffer);              //NOTE TEMP_si7051 overruns uint16_t if >40C!
         Wire.write(loByte);
-  //if(loByte<1){loByte=1;}                   // ONLY THE FIRST data byte saved in each record must have a ZERO TRAP to preserve zero EOF indicators in EEprom
-  hiByte =  highByte(TEMP_si7051); 
+  hiByte = highByte(uint16_Buffer); 
         Wire.write(hiByte);
 #endif //readSi7051_Temp_2byte
 
@@ -1359,13 +1307,13 @@ if(totalBytesOfStorage>4096){
     //Waking the 328p from powerdown takes 16,000 clock cycles (~2milliseconds @8MHz +60µS if BOD_OFF) and the ProMini draws ~250µA while waiting for the oscillator to stabilize.
     bitClear(PORTB,5);                // D13 red LED: pullup OFF
   uint16_Buffer=uint16_Buffer+1;// compensates for very short drop spikes observed on 'scope (with 200uF rail caps)
+
 #ifdef logLowestBattery_1byte 
   LowestBattery = InternalReferenceConstant / uint16_Buffer;
-  //if logging Lowest (say for NTC calibrations) let low battery get over-written every time it is generated
-#else   // we are logging the lowbat only ONCE PER DAY
+  //if logging Lowest let low battery get over-written every time it is generated
+#else  // accumulate only the lowest reading
   CurrentBattery = InternalReferenceConstant / uint16_Buffer;
-  if(t_hour==0 && t_minute==0 && t_second==0){  LowestBattery = 5764; }  // midnight reset to high value prevents 'occasional' low battery readings from permanently affecting the battery record                              
-  if(CurrentBattery < LowestBattery){ LowestBattery = CurrentBattery;} 
+  if(CurrentBattery < LowestBattery){ LowestBattery = CurrentBattery;}
 #endif
 
 if(ECHO_TO_SERIAL){
@@ -1377,6 +1325,8 @@ if(ECHO_TO_SERIAL){
   //now that we are finished working with the 4K eeprom on the RTC module
   //you can speed the bus to 400khz for almost all other I2c devices
   }
+
+
   
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++   
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -1430,7 +1380,7 @@ if(ECHO_TO_SERIAL){
   oled.set2X();  //2x  5x7 system font can display 5 characters accross the screen
   //oled.clearField(32,6,6);
   oled.setCursor(32,6); //set2X can only start at rows 4 or 5 or 6 (because they take two horizontal rows to display)
-  oled.print(rtc_TEMP_degC,2);
+  floatBuffer=rtc_TEMP_degCx4/4.0;oled.print(floatBuffer,2);
   oled.print(F(" ")); //blank spaces to clearing the rest of the row
   LowPower.powerDown(SLEEP_120MS, ADC_OFF, BOD_ON);
   #endif
@@ -1506,14 +1456,14 @@ if(ECHO_TO_SERIAL){
 #ifdef countPIReventsPerSampleInterval                            //Logger can be woken by D2 AND D3 interrupt events
     rtc_INT0_Flag = false;                              //clear the flag we use to indicate the RTC alarm occurred
     do{                                                 //this do-while locks the processor into a 'counting loop' until the RTC alarm happens.
-        sleepNwait4D3InterruptORrtcAlarm();             //counter gets incremented in sleepNwait4D3Interrupt() function //Logger can be woken by D2 AND D3 interrupt events
+        ();             //counter gets incremented in sleepNwait4D3Interrupt() function //Logger can be woken by D2 AND D3 interrupt events
         if(ECHO_TO_SERIAL){ Serial.print(F("PIR wakeup #")); Serial.print(d3_INT1_eventCounter);Serial.flush();}
       }while (rtc_INT0_Flag == false);      // if the RTC alarm fires we break out of the PIR counting loop
       
 #else
     
     #ifdef PIRtriggersSensorReadings
-        sleepNwait4D3InterruptORrtcAlarm();             //Logger can be woken by D2 AND D3 interrupt events
+        ();             //Logger can be woken by D2 AND D3 interrupt events
         if(ECHO_TO_SERIAL){ Serial.print(F("PIR wakeup #")); Serial.print(d3_INT1_eventCounter);Serial.flush();}
     #else
         sleepNwait4RTCalarm(); //NORMAL RTC-only sleepNwait with no D3 interrupt-event-counters
@@ -1538,6 +1488,7 @@ if(ECHO_TO_SERIAL){
 //==========================================================================================
 void sleepNwait4RTCalarm() {                          //NOTE all existing pin states are preserved during sleep
 
+  setUnusedPinsInputHigh();
   turnOffAllindicatorLEDs();
   pinMode(2,INPUT);                                   //D2 pullup off - not needed with hardware pullups on RTC module
   noInterrupts();
@@ -1553,7 +1504,7 @@ void sleepNwait4RTCalarm() {                          //NOTE all existing pin st
   Wire.write(0);                                      // clearing the entire status register turns Off (both) RTC alarms though technically only the last two bits need to be set
   Wire.endTransmission();
   rtc_INT0_Flag = false;                              // clear the flag we use to indicate the RTC alarm occurred 
-  bitSet(EIFR,INTF0); bitSet(EIFR,INTF1);            // clear leftover processor interrupt flags - both just in case we have a noise trigger on the other pin
+  bitSet(EIFR,INTF0); bitSet(EIFR,INTF1);             // clear leftover processor interrupt flags - both just in case we have a noise trigger on the other pin
 }  //terminator for sleepNwait4RTCalarm
 
 void rtc_d2_alarm_ISR() {                             // this function gets called by attachInterrupt above
@@ -1561,7 +1512,41 @@ void rtc_d2_alarm_ISR() {                             // this function gets call
   detachInterrupt(0);                                 // detaching inside the ISR itself makes sure it only triggers ONE time
 }
 
+//============================================================================
+void setUnusedPinsInputHigh(){  // LEDS delt with later with turnOffAllindicatorLEDs
+//============================================================================
+
+
+  // ALL pins to INPUT so no current can leak after shutdown:
+  DDRB &= B11000000;      // pins 13..8 set to zero for input
+  DDRD &= B00000011;      // pins 7..2 set as inputs
+  // DDRC &= B00001000;   // Only A3 needs to be set INPUT during regular operation(?)
+  // we disable those A0-A3 inputs in setup with DIDR0 = 0x0F;
+
+  // ntc circuit pins set to OUTPUT low to drain the NTC capacitor circuit  
+  #if defined(readD7resistorwD8pullup_2byte) || defined(readD6ResistorwD8pullup_2byte)
+  PORTB &= B11111110;     // D8 LOW = PULLUP OFF
+  PORTD &= B00111111;     // D7-6 LOW = PULLUP OFF
+  DDRB  |= B00000001;     // D8 OUTPUT  // to discharge the circuit capacitor
+  DDRD  |= B11000000;     // D7-6 OUTPUT  
+  PORTD |= B00100000;     // D5 PULLUP ON (D5 is not part of the NTC circuit)
+  #else
+  PORTB |= B00000001;     // D8 PULLUP ON
+  PORTD |= B11100000;     // D7-5 PULLUP ON 
+  #endif 
+
+   PORTD |= B00011000;    // D4/3 PULLUPS ON
+   bitClear(PORTD,2);     // D2 always INPUT/LOW for rtc, w 4k7 hardware pullups on RTC module
+  
+  if(bitRead(PRR,PRUSART0)){  // if the USART peripheral IS TURNED OFF = the bit is a 1,  (inverted logic)
+    DDRD &= B1111100;     // pins 1&0 set as inputs
+    PORTD |= B00000011 ;  // pins 1&0 pullups on
+    } 
+}
+
+
 #if defined(countPIReventsPerSampleInterval) || defined(PIRtriggersSensorReadings)
+
 void sleepNwait4D3InterruptORrtcAlarm(){
   // we need to use two flag variables to keep track of which interrupt woke the logger
   // detachInterrupt(X); gets done inside the ISRx for each interrupt which also sets that flag true
@@ -1627,6 +1612,9 @@ void input_d3_interrupt_ISR() {
 }
 #endif  //#if defined(countPIReventsPerSampleInterval)
 
+
+
+
 void setup_sendboilerplate2serialMonitor(){      
 //-----------------------------------------------------------------------------------------
 //NOTE:(__FlashStringHelper*) is needed to print variables is stored in PROGMEM instead of regular memory
@@ -1641,17 +1629,26 @@ void setup_sendboilerplate2serialMonitor(){
     Serial.print(F("Logger:, ")); //Serial.println((__FlashStringHelper*)loggerConfiguration);
     for (uint16_t k = 64; k < 165; k++) { OnecharBuffer = EEPROM.read(k); Serial.print(OnecharBuffer); }
 
+    // The ASCII code for a blank space is decimal 32 which disables the output
+    // unformatted eeprom usually contains 255 which prints as ÿ (y with a diaeresis) this also surpresses output
+    byteBuffer1 = EEPROM.read(266);
+    if(byteBuffer1!=255 && byteBuffer1!=32){ // checks prevent serial output if text field is empty
     Serial.println();
     Serial.print(F("Calibrated:, "));
     for (uint16_t k = 266; k < 367; k++) { OnecharBuffer = EEPROM.read(k); Serial.print(OnecharBuffer); }
+    }
 
     Serial.println();
-    Serial.print(F("Deployment: "));
+    Serial.print(F("Deployment:, "));
     for (uint16_t k = 165; k < 266; k++) { OnecharBuffer = EEPROM.read(k); Serial.print(OnecharBuffer); }
 
+    byteBuffer1 = EEPROM.read(367);
+    if(byteBuffer1!=255 && byteBuffer1!=32){
     Serial.println();   
-    Serial.print(F("Site info: "));
+    Serial.print(F("Site info:, "));
     for (uint16_t k = 367; k < 468; k++) { OnecharBuffer = EEPROM.read(k); Serial.print(OnecharBuffer); }
+    }
+    
     Serial.println();Serial.flush();
 
 //  remaining 512 to 1023 for fonts(?) on loggers with OLED screens
@@ -1691,13 +1688,13 @@ void setup_displayStartMenu() {
               startMenu_updateLoggerInfoField(2,165,265); // updateDeploymentInfo  (SwitchText,EEstart,EEend)
               Serial.setTimeout(1000); displayMenuAgain=true; break;
             case 5:
-              startMenu_updateLoggerInfoField(4,367,467);  // updateLoggerInfo 
-              Serial.setTimeout(1000); displayMenuAgain=true; break;
+              ECHO_TO_SERIAL = !ECHO_TO_SERIAL;           // toggles SERIAL Output On/Off
+              displayMenuAgain=true;  break;
             case 6:                                       // START logger operation
               wait4input=false; break;                    // wait4input=false breaks you out of the switch-case loop & sends you back to Setup function where displayStartMenu was first called
             case 7:
-              ECHO_TO_SERIAL = !ECHO_TO_SERIAL;           // toggles SERIAL Output On/Off
-              displayMenuAgain=true;  break;                             
+              startMenu_updateLoggerInfoField(4,367,467);  // updateLoggerInfo 
+              Serial.setTimeout(1000); displayMenuAgain=true; break;                             
             case 8:
               startMenu_updateLoggerInfoField(1,64,164);  // update Logger Hardware info 
               Serial.setTimeout(1000); displayMenuAgain=true; break;    
@@ -1713,10 +1710,7 @@ void setup_displayStartMenu() {
             case 12:
               startMenu_sendData2Serial(false);             // DLoad ALL RAW bytes from External EEprom
               displayMenuAgain=true;  break;                // outputs ALL eeprom memory as RAW bytes - useful for spotting code / pointer problems
-            case 13:           
-              startMenu_restoreStartValuesFromBackup(); Serial.setTimeout(1000);  // Restore operating parameters from EE backup to 328 internal eeprom
-              displayMenuAgain=true;  break;                // restores startup parameters from 64byte backup on external eeprom - useful if you have to replace a dead promini                        
-            case 14:           
+            case 13:                      
               error_shutdown();                  
             default:                                      // Check milliseconds elapsed & send logger into shutdown if we've waited too long
                 if ((millis() - startMenuStart) > 480000) {// start menu has an 480000 = 8 minute timeout
@@ -1735,8 +1729,9 @@ void startMenu_printMenuOptions(){
 
   Serial.println();
   RTC_DS3231_getTime();                     // reads current clock time  and display it via CycleTimeStamp
+    if(t_year==2000){Serial.print(F("**"));} // flags need for clock set
   Serial.print(t_year,DEC);Serial.print(F("/"));Serial.print(t_month,DEC);Serial.print(F("/"));Serial.print(t_day,DEC);
-    if(t_year==2000){Serial.print(F("(*)"));} // flags need for clock set
+    if(t_year==2000){Serial.print(F("**"));} // flags need for clock set
   Serial.print(F(" Time:")); Serial.print(t_hour,DEC);Serial.print(F(":"));Serial.print(t_minute,DEC);
   Serial.print(F(":"));Serial.print(t_second,DEC); //seconds separate because usually value is zero
   EEPROM.get(6,InternalReferenceConstant); // use .get for multi-byte variables
@@ -1755,11 +1750,11 @@ void startMenu_printMenuOptions(){
   
   SampleIntervalMinutes = EEPROM.read(4);
   SampleIntervalSeconds = EEPROM.read(5);
-  Serial.print(F("RUNtime: "));Serial.print(totalBytesOfStorage-64);//64 bytes reserved for parameter backup
+  Serial.print(F("RUNtime: "));Serial.print(totalBytesOfStorage);
   Serial.print(F(" / "));Serial.print(sensorBytesPerRecord);Serial.print(F("recBytes @ "));
     if (SampleIntervalMinutes==0){Serial.print(SampleIntervalSeconds);Serial.print(F("sec"));}else{Serial.print(SampleIntervalMinutes);Serial.print(F("min"));}
     Serial.print(F(" ~ "));
-    floatBuffer = ((totalBytesOfStorage-96)/sensorBytesPerRecord); // 96 =  64bytes reserved for backup // 32 byte buffer of ZEROS in eeprom
+    floatBuffer = ((totalBytesOfStorage)/sensorBytesPerRecord);
     if (SampleIntervalMinutes==0){
               floatBuffer = floatBuffer*SampleIntervalSeconds;
               Serial.print(floatBuffer/60,0);Serial.print(F("m or "));
@@ -1776,7 +1771,9 @@ void startMenu_printMenuOptions(){
       
 //POWER OF TWO error checks - any non zero result in if statement is interpreted as 'true' 
   if (sensorBytesPerRecord &(sensorBytesPerRecord-1)){ 
-    Serial.println();Serial.print(sensorBytesPerRecord);Serial.println(F(" Sensor bytes not PowerOfTwo → CHANGE CONFIG!"));
+    Serial.println();
+    Serial.print(sensorBytesPerRecord);
+    Serial.println(F(" Sensor bytes not PowerOfTwo → CHANGE CONFIG!"));
     }
     Serial.println();
     
@@ -1787,7 +1784,7 @@ void startMenu_printMenuOptions(){
     Serial.print(F("Serial Output["));
     Serial.print(ECHO_TO_SERIAL ? "ON] " : "Off]"); 
     sendMultiAscii2serial(4,32);// blank spaces
-    Serial.print(F("[99]→ "));  
+    Serial.print(F("[99] →"));  
     
     if(displayMoreOptions){Serial.print(F("Runtime"));
       }else{Serial.print(F("Setup"));}
@@ -1799,13 +1796,13 @@ void startMenu_printMenuOptions(){
     Serial.print      (F("[2]**Set RTC time**"));}//that the oscillator was stopped for some period due to power loss
     else {Serial.print(F("[2]  Set RTC Clock "));}
     Serial.println(F("   [3]  Set INTERVAL"));
-    Serial.println(F(" [4]  Deployment info   [5]  Add Site info    [6]  START logging"));
+    Serial.println(F(" [4]  Deployment info   [5]  SERIAL On / Off  [6]  START logging"));
 
 if(displayMoreOptions){    
     sendMultiAscii2serial(65,45);Serial.println();      // line of -minus- signs
-    Serial.println(F(" [7]  SERIAL On / Off   [8]  Add Logger info  [9]  Cal.Constants"));
+    Serial.println(F(" [7]  Add Site info     [8]  Add Logger info  [9]  Cal.Constants"));
     Serial.println(F(" [10] Set Internal VREF [11] Set RTC Aging    [12] Dload RAW EEdata"));
-    Serial.println(F(" [13] Restore EE->328   [14] SHUTDOWN"));
+    Serial.println(F(" [13] SHUTDOWN"));
     }
       Serial.println(); Serial.flush();
 }   //terminates startMenu_printMenuOptions
@@ -1828,13 +1825,13 @@ void startMenu_listEnabledSensors(){
         Serial.print(F("PIR Triggers Reading, "));
         #endif
   #if defined(readD7ResistorwD6ref_2byte) || defined(readD7resistorwD8pullup_2byte)
-        Serial.print(F("D7r[Ω], "));  //e360 & 2part
+        Serial.print(F("D7[Ω], "));  //e360 & 2part
         #endif 
   #ifdef readD9resistorwD6ref_2byte    // 2part
-        Serial.print(F("D9r[Ω], "));
+        Serial.print(F("D9[Ω], "));
         #endif  
   #ifdef readD6ResistorwD8pullup_2byte // e360
-      Serial.print(F("D6r[Ω], "));
+      Serial.print(F("D6[Ω], "));
       #endif  
   #ifdef readBh1750_LUX_2byte
         Serial.print(F("Bh1750[Lux], "));
@@ -1889,7 +1886,6 @@ do {
    delay(15);
    RTCagingOffset = i2c_readRegisterByte(DS3231_ADDRESS,DS3231_AGING_OFFSET_REG);
    Serial.print(F("RTC Aging Offset set to: ")); Serial.println(RTCagingOffset); 
-   settingsChanged = true; // forces backup of first 64bytes 328p eeprom to External EEprom at end of startup 
    return;
 } // terminates startMenu_setRTCageOffset
 
@@ -1903,7 +1899,6 @@ do {
     }while((InternalReferenceConstant<1000000) || (InternalReferenceConstant>1228800)); // if condition fails & you have to re-enter the number
    Serial.print(F("Vref set to: ")); Serial.println(InternalReferenceConstant);
    EEPROM.put(6,InternalReferenceConstant);                 // every time you run the logger it will retrieve the interval from the previous run 
-   settingsChanged = true; // forces backup of first 64bytes 328p eeprom to External EEprom at end of startup    
    return;
 } // terminates startMenu_setVrefConstant
 
@@ -1938,7 +1933,6 @@ do {
       }
     EEPROM.update(4,SampleIntervalMinutes);             // newly entered values are now stored in the 329p's internal eeprom
     EEPROM.update(5,SampleIntervalSeconds);             // every time you run the logger it will retrieve the interval from the previous run 
-    settingsChanged=true; // forces backup of first 64bytes 328p eeprom to External EEprom at end of startup 
     return;
 } // startMenu_setSampleInterval
 
@@ -2010,7 +2004,6 @@ if ((uint32_Buffer > 0) && (uint32_Buffer < 240)) {  // <20 years equivalent in 
     DS3231_PowerLossFlag=false;
     }   //terminates if (set_t_month==0 && set_t_day==0){
 
-    settingsChanged=true; // forces backup of first 64bytes 328p eeprom to External EEprom at end of startup 
 } //terminates startMenu_setRTCtime
 
 
@@ -2101,7 +2094,7 @@ void startMenu_sendData2Serial(boolean convertDataFlag){ // called at startup vi
 // NOTE: the ORDER of BYTES/SENSORS listed in startMenu_sendData2Serial MUST EXACTLY MATCH
 // the order you ADDED those SENSOR READINGS when loading the EEprom write buffer in the main loop
 
- if(totalBytesOfStorage==4096){Wire.setClock(100000UL);}
+ if(totalBytesOfStorage==4096){Wire.setClock(100000UL);}  //4k eeprom only supports 100khz
 
 // ADD HEADER information to top rows of serial output:
   setup_sendboilerplate2serialMonitor();  // a description of the deployment should be part of the data output
@@ -2130,19 +2123,25 @@ if (convertDataFlag){                     // don't print these headers if sendin
         }
 
   uint32_t startMillis = millis();                      // track how long it takes for the data download
-  EEmemPointer = 64;                                   // a counter that advances through the EEprom Memory in sensorBytesPerRecord increments
-    
+  EEmemPointer = 0;                                   // a counter that advances through the EEprom Memory in sensorBytesPerRecord increments
+  byte checkingEOF = 255; 
 
-  do{    // this big do-while loop readback must EXACTLY MATCH the data saving pattern in our main loop:
-  //---------------------------------------------------------------------------------------------------------- 
-   
-  byteBuffer2 = 0;  //if the 1st & 2nd bytes in the record readback as ZERO then we've reached our end of data in the EEprom
+  do{    // this big do-while readback loop MUST EXACTLY MATCH the DATA SAVING ORDER in our main loop:
+  //-------------------------------------------------------------------------------------------------- 
+
+  checkingEOF = 255; byteBuffer2 = 255;
   byteBuffer1 = i2c_eeprom_read_byte(EEpromI2Caddr, EEmemPointer);    // uint8_t i2c_eeprom_read_byte
   if((EEmemPointer+1) < totalBytesOfStorage){
     byteBuffer2 = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer+1);
     }
-  if(byteBuffer1==0 && byteBuffer2==0 && convertDataFlag){ break;}     // this breaks us out of the do-while readback loop
-
+  if((EEmemPointer+2) < totalBytesOfStorage){
+    checkingEOF = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer+2);
+    }
+  if(convertDataFlag && byteBuffer1==255 && byteBuffer2==255 && checkingEOF==255){ break;}     
+  // multiple 0xFF breaks us out of the do-while readback loop, recall that EEprom was ERASED by setting all locations to 0xFF at logger startup
+  // this EndOfFile check only happens if convertDataFlag true, otherwise the data dump runs through the entire eeprom
+  // Checks for THREE SUCCESSIVE 0xFF as the end of data marker in the eeprom: checking multiple is less dependant on 0xFF traps & handles one spurious readback fail
+ 
 
 if (!convertDataFlag){    // then output raw bytes exactly as read from eeprom [with no timestamp] // this is ONLY used for debugging
         for (uint8_t j = 0; j < sensorBytesPerRecord; j++) {
@@ -2163,10 +2162,7 @@ if (!convertDataFlag){    // then output raw bytes exactly as read from eeprom [
       d3_INT1_elapsedSeconds = (uint32_Buffer << 16) | d3_INT1_elapsedSeconds;
       uint32_Buffer = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer); //high byte
       EEmemPointer++; 
-      d3_INT1_elapsedSeconds = (uint32_Buffer << 24) | d3_INT1_elapsedSeconds;
-      
-      d3_INT1_elapsedSeconds=d3_INT1_elapsedSeconds-1; // removes our zero trap on the first byte
-      
+      d3_INT1_elapsedSeconds = (uint32_Buffer << 24) | d3_INT1_elapsedSeconds;    
       unix_timeStamp += d3_INT1_elapsedSeconds;   // then PIR triggered readings have an irregular number seconds between intervals    
 #endif
 
@@ -2184,12 +2180,12 @@ if (!convertDataFlag){    // then output raw bytes exactly as read from eeprom [
       Serial.print(uint16_Buffer);Serial.print(F(","));
 #endif
 
-#ifdef logRTC_Temperature_1byte                                   // RTC temperature 1-byte compressed: low side cutoff at 1 for minimum reading of -12.25C
-      int16_Buffer = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer);
-      EEmemPointer++;
-      floatBuffer = int16_Buffer;
-      floatBuffer = (floatBuffer/4.0)-10.0;                 // REVERSING the calculation we used to compress the data into one byte
-      Serial.print(floatBuffer,2);Serial.print(F(","));     // ,2) specifies that you only print two decimal places
+#ifdef logRTC_Temperature_1byte                                   // RTC temperature 1-byte compressed: low side cutoff depends on range offset used
+      uint16_Buffer = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer);EEmemPointer++;            
+      int16_Buffer = uint16_Buffer - RTC_TempRangeOffset;   // reverses the + Offset shift to handle more negative temps in our 0-255 byte
+      int16_Buffer = int16_Buffer*25;                       // combines *100 AND /4 to restore 0.25, 0.5, 0.75 fractional digits
+      floatBuffer = int16_Buffer/100.0;
+      Serial.print(floatBuffer,2);Serial.print(F(","));     // only print two decimal places
 #endif  //#ifdef logRTC_Temperature_1byte 
 
 #ifdef countPIReventsPerSampleInterval
@@ -2253,9 +2249,8 @@ if (!convertDataFlag){    // then output raw bytes exactly as read from eeprom [
       EEmemPointer++;
       hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer); //hi byte
       EEmemPointer++;
-      uint16_Buffer = (uint16_t)((hiByte << 8) | loByte);    
-      floatBuffer  = (float)(uint16_Buffer)/100.0;
-      floatBuffer  = floatBuffer -10.0; // correction for the +10C shift we did before *100 to preserve the decimals
+      int16_Buffer = (int16_t)((hiByte << 8) | loByte);
+      floatBuffer  = (float)(int16_Buffer)/100.0;
       Serial.print(floatBuffer,2);Serial.print(",");
 #endif
 
@@ -2310,7 +2305,7 @@ if (!convertDataFlag){    // then output raw bytes exactly as read from eeprom [
       Serial.print(floatBuffer,2);Serial.print(",");
 #endif
 
-#ifdef recordBMEhumidity_2byteInt // originally uint32_t g_humidity but we truncated to 2-bytes
+#ifdef recordBMEhumidity_2byteInt // originally uint32_t Bme_humidity but we truncated to 2-bytes
       loByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer);
       EEmemPointer++;
       hiByte = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer);
@@ -2356,78 +2351,9 @@ if (!convertDataFlag){    // then output raw bytes exactly as read from eeprom [
   Serial.println();
   Serial.print(F("Download took: "));Serial.print((millis() - startMillis));Serial.println(F(" msec"));
   Serial.flush();
-  EEmemPointer = 64;                       //back to starup default value
+  EEmemPointer = 0;                       //back to starup default value
+  
 }  // terminates sendData2Serial() function
-
-
-void startMenu_restoreStartValuesFromBackup(){        // this option only used when fixing a dead logger!
-//-------------------------------------------------------------------------------------------------------
-    uint8_t tempDataBuffer[16];
-
-    Serial.println(F("WARNING: this functionality is still in dev -not fully tested yet-")); 
- 
-    Serial.println(F("Parameters in 328p:"));
-    Serial.print(F("Start Utime:"));EEPROM.get(0,uint32_Buffer);Serial.print(uint32_Buffer);
-    Serial.print(F("  Interval:"));Serial.print(EEPROM.read(4));Serial.print(F("m, "));
-    Serial.print(EEPROM.read(5));Serial.println(F("s"));
-    Serial.print(F("Vref:"));EEPROM.get(6,uint32_Buffer);Serial.println(uint32_Buffer); 
-    //Serial.print(F("  RTCage:"));Serial.print(EEPROM.read(10));
-    Serial.println();Serial.println(F("Will be replaced by these Ext.EEprom values:"));
-    byteBuffer2=0;
-    Wire.beginTransmission(EEpromI2Caddr);
-    Wire.write(0);Wire.write(0); Wire.endTransmission();
-    Wire.requestFrom(EEpromI2Caddr,16);
-    while (Wire.available()) {tempDataBuffer[byteBuffer2++] = Wire.read();}
-    byteBuffer2=0;
-    Serial.print(F("Start Utime:"));
-    uint32_Buffer = tempDataBuffer[byteBuffer2++];
-    uint32_Buffer = (uint32_Buffer << 8) | tempDataBuffer[byteBuffer2++];
-    uint32_Buffer = (uint32_Buffer << 8) | tempDataBuffer[byteBuffer2++];
-    uint32_Buffer = (uint32_Buffer << 8) | tempDataBuffer[byteBuffer2++];
-    Serial.print(uint32_Buffer);
-    Serial.print(F("  Interval:"));Serial.print(tempDataBuffer[byteBuffer2++]);
-    Serial.print(F("m, "));Serial.print(tempDataBuffer[byteBuffer2++]);Serial.println(F("s"));
-    Serial.print(F("  Vref:"));
-    uint32_Buffer = tempDataBuffer[byteBuffer2++];
-    uint32_Buffer = (uint32_Buffer << 8) | tempDataBuffer[byteBuffer2++];
-    uint32_Buffer = (uint32_Buffer << 8) | tempDataBuffer[byteBuffer2++];
-    uint32_Buffer = (uint32_Buffer << 8) | tempDataBuffer[byteBuffer2++];
-    Serial.println(uint32_Buffer);
-    Serial.println();  
-   
-    Serial.println(F("Restoring Logger Parameters from external BACKUP cannot be undone! Proceed? y/n"));
-    clearSerialInputBuffer;   // clears any leftover bytes in serial buffer  
-    Serial.setTimeout(1000);
-    booleanBuffer = true;   byteBuffer1 = 0;
-    while (booleanBuffer) {
-        if (Serial.available()) byteBuffer1 = Serial.read();  //.read captures only ONE character at a time from the serial monitor window
-        
-        switch (byteBuffer1) {
-          case 'y': 
-            Wire.beginTransmission(EEpromI2Caddr);          
-            Wire.write(0); Wire.write(0);               // two bytes to specify the external eeprom address
-            Wire.endTransmission();
-
-            Wire.requestFrom(EEpromI2Caddr,16);
-            byteBuffer2=0;
-            while (Wire.available()) {tempDataBuffer[byteBuffer2++] = Wire.read();}
-            
-            for (uint8_t h=0; h<16; h++){
-              EEPROM.update(h, tempDataBuffer[h]); // EEPROM. BLOCKING each byte write is about 4ms
-              // BLOCKING about 4ms per byte (addr, val);
-             }
-            Serial.println(F("328p startup values RESTORED from BACKUP on external EEprom")); Serial.flush();
-            booleanBuffer = false; break;
-
-          case 'n': 
-            Serial.println(F("Restore NOT done.")); Serial.flush();
-            booleanBuffer = false; break;  // return;
-            
-          default: 
-            break;
-          }       // terminates switch case
-      }           // terminates while(booleanBuffer)     
-}                 // terminatesvoid _restoreStartValuesFromBackup
 
 
 //==========================================================================================
@@ -2633,20 +2559,27 @@ void error_shutdown() {
 // modified from JeeLab's fantastic real time clock library released into the public domain 
 // =========================================================================================
 
-float RTC_DS3231_getTemp(){             // from http://forum.arduino.cc/index.php?topic=22301.0  
+int16_t RTC_DS3231_getTemp(){  // Returns int16_t temperature in Celsius times four.
 //--------------------------------------------------------------------------------------------
 // temp registers (upper byte 0x11 & lower 0x12) get updated automatically every 64s
 
+    union int16_byte {                  //here a union is used to merge the two bytes
+        int16_t i;
+        uint8_t b[2];
+    } rtcTemp;
+
   Wire.beginTransmission(DS3231_ADDRESS);
   Wire.write(DS3231_TMP_UP_REG);        // set the memory pointer inside the RTC to first temp register
-  Wire.endTransmission(); 
+  Wire.endTransmission();
+  
   Wire.requestFrom(DS3231_ADDRESS, 2);  // request the two temperature register bytes
   if (Wire.available()) {
-    hiByte = Wire.read();               // 2's complement int portion - If hiByte bit7 is a 1 then the temperature is negative
-    loByte = Wire.read();               // fraction portion
-    floatBuffer = ((((int16_t)hiByte << 8) | (int16_t)loByte) >> 6) / 4.0; // Allows for readings below freezing // to Convert Celcius to Fahrenheit: temp3231 = (temp3231 * 1.8) + 32.0; 
-  } else { floatBuffer = 99.99;}        // use 'impossible' temperatue output to flag if sensor returns bad data
-  return floatBuffer;
+    rtcTemp.b[1] = Wire.read();         // 2's complement int portion - If hiByte bit7 is a 1 then the temperature is negative
+    rtcTemp.b[0] = Wire.read();         // loByte = fraction portion
+    return rtcTemp.i /64;               // value is signed so union is better than bit shifting
+    }  
+    else { return (255-RTC_TempRangeOffset);}  
+    // the max our encoding can store to flag there has been a read error
 }
 
 void RTC_DS3231_getTime(){
@@ -2880,7 +2813,7 @@ uint16_t readSI7051() {    //Conversion time: 14-bit temps = 10 ms @ 120 μA, pe
 // with [104] caps this calculation fits within uint32_t variables
 // HOWEVER w 105 capacitors must change read functions & cast this calculation to higher uint64_t bit depth
 // D7resistor_NewReading=((uint64_t)elapsedTimeSensor * (uint64_t)referenceResistorValue) / elapsedTimeReff;
-// FAST PORT COMMANDS used throughout these functions to increase timing accuracy
+// FAST PORT COMMANDS used throughout these functions to increase timing precision
 
 //-----------------------------------------------------------------------------------------
 void ConditionCapacitorOnD8(){            // 2023-06-20: internal pullup resistor on D8 as ref- D6=LDR (not D9), D7=10kNTC
@@ -3127,14 +3060,14 @@ ISR (TIMER1_OVF_vect) {           // timer1 overflows (every 65536 system clock 
 
 void turnOnGreenAndBlueLED(){               // HIGHEST VISIBILITY 'blue-green' pip ~100uA
     #if defined(LED_r9_b10_g11_gnd12)
-      bitClear(PORTB,3); bitSet(DDRB,3);    // Common GND       // same as digitalWrite(12,LOW); pinMode(12,OUTPUT);
-      bitClear(DDRB,1);  bitClear(PORTB,1); // D9 [Red] OFF     // same as pinMode(9,INPUT);  digitalWrite(9,LOW); 
+      bitClear(DDRB,1);  bitClear(PORTB,1); // D9  [Red] OFF    // same as pinMode(9,INPUT);  digitalWrite(9,LOW); 
       bitClear(DDRB,2);  bitSet(PORTB,2);   // D10 [Blue] ON    // same as pinMode(10,INPUT); digitalWrite(10,HIGH);
       bitClear(DDRB,3);  bitSet(PORTB,3);   // D11 [Green] ON   // same as pinMode(11,INPUT); digitalWrite(11,HIGH);
+      bitClear(PORTB,4); bitSet(DDRB,4);    // D12 Common GND   // same as digitalWrite(12,LOW); pinMode(12,OUTPUT);
     #elif defined(LED_GndGB_A0_A2)
-      bitClear(PORTC,0); bitSet(DDRC,0);    // A0 Common GND    // same as digitalWrite(A0,LOW); pinMode(A0,OUTPUT);
       bitClear(PORTC,1); bitSet(DDRC,1);    // A1 [Green] ON    // same as pinMode(A1,INPUT); digitalWrite(A1,HIGH);
       bitClear(DDRC,2);  bitSet(PORTC,2);   // A2 [Blue] ON     // same as pinMode(A2,INPUT); digitalWrite(A2,HIGH);
+      bitClear(PORTC,0); bitSet(DDRC,0);    // A0 Common GND    // same as digitalWrite(A0,LOW); pinMode(A0,OUTPUT);
     #else
       bitClear(DDRB,5); bitSet(PORTB,5);    // Red ProMini LED on pin13 = ON // same as pinMode(13,INPUT_PULLUP); light default red led on D13
     #endif
@@ -3151,14 +3084,14 @@ void toggleBlueAndGreenLEDs(){              // Writing a 1 to any bits in the PI
   
 void turnOnRedAndBlueLED(){
     #if defined(LED_r9_b10_g11_gnd12)       // 'purple' in this configuration
-      bitClear(PORTB,3); bitSet(DDRB,3);    // Common GND       // same as digitalWrite(12,LOW); pinMode(12,OUTPUT);
       bitClear(DDRB,1);  bitSet(PORTB,1);   // D9 [Red] ON      // same as pinMode(9,INPUT);  digitalWrite(9,HIGH); 
       bitClear(DDRB,2);  bitSet(PORTB,2);   // D10 [Blue] ON    // same as pinMode(10,INPUT); digitalWrite(10,HIGH);
       bitClear(DDRB,3);  bitClear(PORTB,3); // D11 [Green] OFF  // same as pinMode(11,INPUT); digitalWrite(11,LOW);
-    #elif defined(LED_GndGB_A0_A2)          // this configuration does not have RED channel embedded inside the 5mm LED!
-      bitClear(PORTC,0); bitSet(DDRC,0);    // A0 Common GND    // same as digitalWrite(A0,LOW); pinMode(A0,OUTPUT);
+      bitClear(PORTB,4); bitSet(DDRB,4);    // D12 Common GND   // same as digitalWrite(12,LOW); pinMode(12,OUTPUT);
+    #elif defined(LED_GndGB_A0_A2)          // this configuration does not connect the RED channel of the 5mm LED!
       bitClear(PORTC,1); bitClear(DDRC,1);  // A1 [Green] OFF   // same as pinMode(A1,INPUT); digitalWrite(A1,LOW);
       bitClear(DDRC,2);  bitSet(PORTC,2);   // A2 [Blue] ON     // same as pinMode(A2,INPUT); digitalWrite(A2,HIGH);
+      bitClear(PORTC,0); bitSet(DDRC,0);    // A0 Common GND    // same as digitalWrite(A0,LOW); pinMode(A0,OUTPUT);
       bitClear(DDRB,5);  bitSet(PORTB,5);   // Red ProMini LED on pin13 = ON // same as pinMode(13,INPUT_PULLUP); light default red led on D13
     #else
       bitClear(DDRB,5);  bitSet(PORTB,5);   // Red ProMini LED on pin13 = ON // same as pinMode(13,INPUT_PULLUP); light default red led on D13
@@ -3177,14 +3110,14 @@ void toggleRedandBlueLEDs(){                // Writing a 1 to any bit in PIN con
    
 void turnOnGreenLED(){
     #if defined(LED_r9_b10_g11_gnd12)
-      bitClear(PORTB,3); bitSet(DDRB,3);    // Common GND       // same as digitalWrite(12,LOW); pinMode(12,OUTPUT);
       bitClear(DDRB,1);  bitClear(PORTB,1); // D9 [Red]   OFF   // same as pinMode(9,INPUT);  digitalWrite(9,LOW);
       bitClear(DDRB,2);  bitClear(PORTB,2); // D10 [Blue] OFF   // same as pinMode(10,INPUT); digitalWrite(10,LOW );
       bitClear(DDRB,3);  bitSet(PORTB,3);   // D11 [Green] ON   // same as pinMode(11,INPUT); digitalWrite(11,HIGH);
+      bitClear(PORTB,4); bitSet(DDRB,4);    // D12 Common GND   // same as digitalWrite(12,LOW); pinMode(12,OUTPUT);
     #elif defined(LED_GndGB_A0_A2)
-      bitClear(PORTC,0); bitSet(DDRC,0);    // A0 Common GND    // same as digitalWrite(A0,LOW); pinMode(A0,OUTPUT);
       bitClear(DDRC,1);  bitSet(PORTC,1);   // A1 [Green] ON    // same as pinMode(A1,INPUT); digitalWrite(A1,HIGH);
       bitClear(DDRC,2);  bitClear(PORTC,2); // A2 [Blue] OFF    // same as pinMode(A1,INPUT); digitalWrite(A1,LOW);
+      bitClear(PORTC,0); bitSet(DDRC,0);    // A0 Common GND    // same as digitalWrite(A0,LOW); pinMode(A0,OUTPUT);
     #else
       bitClear(DDRB,5);  bitSet(PORTB,5);   // Red ProMini LED on pin13 = ON // same as pinMode(13,INPUT_PULLUP); light default red led on D13
     #endif
@@ -3192,15 +3125,14 @@ void turnOnGreenLED(){
   
 void turnOnBlueLED(){
     #if defined(LED_r9_b10_g11_gnd12)
-      bitClear(PORTB,3); bitSet(DDRB,3);    // Common GND       // same as digitalWrite(12,LOW); pinMode(12,OUTPUT);
       bitClear(DDRB,1);  bitClear(PORTB,1); // D11 [Red] OFF    // same as pinMode(9,INPUT);  digitalWrite(9,LOW);
       bitClear(DDRB,2);  bitSet(PORTB,2);   // D10 [Blue] ON    // same as pinMode(10,INPUT); digitalWrite(10,HIGH);
       bitClear(DDRB,3);  bitClear(PORTB,3); // D11 [Green] OFF  // same as pinMode(11,INPUT); digitalWrite(11,LOW);
- 
+      bitClear(PORTB,4); bitSet(DDRB,4);    // D12 Common GND       // same as digitalWrite(12,LOW); pinMode(12,OUTPUT); 
     #elif defined(LED_GndGB_A0_A2)
-      bitClear(PORTC,0); bitSet(DDRC,0);    // A0 Common GND    // same as digitalWrite(A0,LOW); pinMode(A0,OUTPUT);
       bitClear(DDRC,1);  bitClear(PORTC,1); // A1 [green] OFF   // same as pinMode(A1,INPUT); digitalWrite(A1,LOW);
       bitClear(DDRC,2);  bitSet(PORTC,2);   // A2 [Blue] ON     // same as pinMode(A2,INPUT); digitalWrite(A2,HIGH);
+      bitClear(PORTC,0); bitSet(DDRC,0);    // A0 Common GND    // same as digitalWrite(A0,LOW); pinMode(A0,OUTPUT);
     #else
       bitClear(DDRB,5); bitSet(PORTB,5);    // Red ProMini LED on pin13 = ON // same as pinMode(13,INPUT_PULLUP); light default red led on D13
     #endif
@@ -3208,7 +3140,7 @@ void turnOnBlueLED(){
 
 void turnOnRedLED(){
     #if defined(LED_r9_b10_g11_gnd12)
-      DDRB &= B11110001;                    // set 3 pins to INPUT 
+      DDRB &= B11110001;                    // how set D9-D11 pins to INPUT with one command
       bitClear(PORTB,2);                    // D10 [Blue] PULLUP OFF
       bitClear(PORTB,3);                    // D11 [Green] PULLUP OFF
       bitSet(PORTB,1);                      // D9 [Red] PULLUP ON 
@@ -3224,14 +3156,13 @@ void turnOnRedLED(){
   }
 void turnOffAllindicatorLEDs(){
     #if defined(LED_r9_b10_g11_gnd12)
-      bitClear(PORTB,1); bitClear(DDRB,1);  // D11 [Red]    OFF  // same as pinMode(9,INPUT);
-      bitClear(PORTB,2); bitClear(DDRB,2);  // D10 [Blue]   OFF  // same as pinMode(10,INPUT);
-      bitClear(PORTB,3); bitClear(DDRB,3);  // D11 [Green]  OFF  // same as pinMode(11,INPUT);
+      bitClear(PORTB,1); bitClear(DDRB,1);  // D9  [Red]    OFF  // same as pinMode(9,INPUT); digitalWrite(9,LOW);
+      bitClear(PORTB,2); bitClear(DDRB,2);  // D10 [Blue]   OFF  // same as pinMode(10,INPUT);digitalWrite(10,LOW);
+      bitClear(PORTB,3); bitClear(DDRB,3);  // D11 [Green]  OFF  // same as pinMode(11,INPUT);digitalWrite(11,LOW);
     #elif defined(LED_GndGB_A0_A2)
       bitClear(PORTC,1); bitClear(DDRC,1);  // A1 [green] OFF // same as pinMode(A1,INPUT); digitalWrite(A1,LOW);
       bitClear(PORTC,2); bitClear(DDRC,2);  // A2 [Blue]  OFF // same as pinMode(A2,INPUT); digitalWrite(A2,LOW);
-      bitClear(PORTB,5);                    // pin13 red promini LED pullup Off
-   #endif
+    #endif
       bitClear(PORTB,5);                    // pin13 red promini LED pullup Off
   }
 //=======================================================================
