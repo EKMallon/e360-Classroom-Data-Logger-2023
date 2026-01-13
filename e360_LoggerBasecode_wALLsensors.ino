@@ -361,36 +361,36 @@ void setup () {
   #ifdef readSi7051_Temp_2byte
     sensorBytesPerRecord = sensorBytesPerRecord + 2;            // two-byte integer  
   #endif
-  
 
 // General Startup housekeeping: Set UNUSED digital pins to a known state at startup to reduce current & noise
 //------------------------------------------------------------------------------------------------------------
-   
-    pinMode(13, INPUT);       // turn of D13 onboard red LED by setting D13 to INPUT & LOW
+
+// set UNUSED digital pins to INPUT/HIGH so EMI noise does not toggle the pin & draw current
+    for (int i = 3; i <=8; i++) { pinMode(i,INPUT); digitalWrite(i,HIGH);} 
+         
   #ifdef LED_r9_b10_g11_gnd12                       // we will use INPUT & PULLUP resistor to PIP the leds to reduce current
     for (int i = 9; i <=12; i++) { digitalWrite(i, LOW);  pinMode(i, INPUT); }
     pinMode(12, OUTPUT);                            // the common ground line on our RGB led must OUTPUT to allow current
+  #else
+    for (int i = 9; i <=12; i++) { pinMode(i,INPUT); digitalWrite(i,HIGH);}
   #endif
+  
+    pinMode(13, INPUT); digitalWrite(13,LOW);         // turn of D13 onboard red LED by setting D13 to INPUT & LOW
 
   #ifdef LED_GndGB_A0_A2
-    bitClear(PORTC,1); bitClear(DDRC,1);       // A1 [green] LED LOW & INPUT
-    bitClear(PORTC,2); bitClear(DDRC,2);       // A2 [Blue] LED LOW & INPUT
-    bitClear(PORTC,0); bitSet(DDRC,0);         // A0 GND pin LOW & OUTPUT
-#endif //LED_GndGB_A0_A2
-
-  // set UNUSED digital pins to LOW & OUTPUT so EMI noise does not toggle the pin & draw current
-    for (int i = 3; i <=8; i++) { digitalWrite(i, LOW);  pinMode(i, OUTPUT); } //Note: if an interrupt source connected to D3 then the pin must be reset to INPUT
+    bitClear(PORTC,1); bitClear(DDRC,1);            // A1 [green] LED LOW & INPUT
+    bitClear(PORTC,2); bitClear(DDRC,2);            // A2 [Blue] LED LOW & INPUT
+    bitClear(PORTC,0); bitSet(DDRC,0);              // A0 common cathode LED GND pin: LOW & OUTPUT
+  #endif //LED_GndGB_A0_A2
 
   //Disable UNUSED Peripherals to save power - restart them later when needed - At 3V @ 25°C, the ADC consumes ~87µA so we disable it to save power
     SPCR = 0; power_spi_disable();                  // stop the peripheral clock with SPCR = 0 BEFORE calling power_spi_disable(); -same applies to the ADC
     power_timer1_disable(); power_timer2_disable(); // NOTE: DON'T mess with timer0! - other peripherals like the I2C bus require Timer0 operating
     bitSet(ACSR,ACD);                               // Disables the analog comparator on AIN0(PD6) and AIN1(PD7)by setting the ACD bit (bit 7) of the ACSR register to one. analog comparator draws ~51µA.
 
-
 // ADC Configuration: default & modified control register settings saved into storage variables
 //------------------------------------------------------------------------------------------------------------
-// A3..A0 - make sure pullups are OFF so they dont interefere with ADC readings // ignore A4/5 because I2C bus has hardware pullups (on RTC module)
-    digitalWrite(A0,LOW);digitalWrite(A1,LOW);digitalWrite(A3,LOW);
+
   #ifndef LED_GndGB_A0_A2                           // diconnects the DIGITAL inputs sharing analog pins 0..3 (but NOT on 4&5 which are used by I2C as digital pins) 
     DIDR0 = 0x0F;                                   // Once disabled, a digitalRead on those pins will always return zero.
   #endif                                            // Digital input circuits can 'leak' a relatively high amount of current if the analog input is approximately half-Vcc 
@@ -3156,3 +3156,4 @@ void sendMultiAscii2serial(uint8_t repeats,uint8_t asciiCode){
       Serial.write(asciiCode);
       }
   }
+
