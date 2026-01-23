@@ -10,7 +10,7 @@ The code has support for a built-in NTC / LDR combination, Bmp280, BH1750, and P
 >//++++++++++++++++++++++++++++++++++++++++++++++++++++</br>
 </br>
 
-![image](https://github.com/EKMallon/e360-Student-Data-Logger-2023/assets/7884030/9b3076fb-8c6d-409d-8c09-f8259e70e258)
+![image]([https://github.com/EKMallon/e360-Classroom-Data-Logger-2023/blob/main/images/2026_SETUP_flowChart_JPEG.jpg])
 If all you do is enable the supported sensors via defines at the start of the program you won't have to deal with the low-level storage details.
 ![image](https://github.com/EKMallon/e360-Student-Data-Logger-2023/assets/7884030/29d781fe-6e29-4e28-8342-0259748029fe)
 
