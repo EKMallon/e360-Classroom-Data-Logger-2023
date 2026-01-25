@@ -62,11 +62,11 @@ Note: we still have upper 512 bytes of 328p 1k eeprom availible for OLED screen 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 // LowestBattery & RTC_Temperature are the 2 byte 'base values' which are usually recorded with every sensor reading (as they require no extra sensor hardware beyond the logger itself)
-//#define logLowestBattery_1byte           // 1-byte (compressed): saves LowestBattery voltage recorded during EEprom saves
-//#define logRTC_Temperature_1byte         // 1-byte: the RTC's internal 0.25°C resolution temperature sensor
+#define logLowestBattery_1byte           // 1-byte (compressed): saves LowestBattery voltage recorded during EEprom saves
+#define logRTC_Temperature_1byte         // 1-byte: the RTC's internal 0.25°C resolution temperature sensor
 
 //Pressure sensor:
-#define readBMP280_Temp_2byte            // 2-bytes  // IF you enable all three BMP or BME outputs
+//#define readBMP280_Temp_2byte            // 2-bytes  // IF you enable all three BMP or BME outputs
 //#define readBMP280_Pressure_2byte        // 2-bytes  // you will need two more bytes for an 8-byte record: try adding logLowestBattery_1byte & logRTC_Temperature_1byte 
 //#define recordBMP280_Altitude_2byte      // 2-bytes: calculated by library
 
@@ -79,7 +79,7 @@ Note: we still have upper 512 bytes of 328p 1k eeprom availible for OLED screen 
 
 //Infrared Motion sensor:                  // AM312 typically adds 10-15uA to sleep current
 //#define PIRcountPerInterval_2byte  // 2-bytes:  PIR is just another interrupt generating sensor, saves # of PIR HIGH events in a specified sample interval. Do not enable this with PIRtriggersReadings_4byte - choose one or the other
-#define PIRtriggersReadings_4byte         // 4-bytes: Do not enable this with PIRcountPerInterval_2byte - choose one or the other
+//#define PIRtriggersReadings_4byte         // 4-bytes: Do not enable this with PIRcountPerInterval_2byte - choose one or the other
 // DOES NOT use the regular RTC-alarm based sampling interval but instead records the seconds elapsed between EVERY PIR trigger event in a uint32_t long variable [uint16_t would overflow at ~18 hours]
 // Reconstructs time stamps in sendData2Serial function by incrementing starttime by d3_INT1_elapsedSeconds
 // PIRtriggersReadings_4byte usually enabled with four other bytes of sensor data [for a total of 8 bytes per record] OR with another 12 bytes of sensor data for a total of 16 bytes per record.
@@ -3190,3 +3190,4 @@ void sendMultiAscii2serial(uint8_t repeats,uint8_t asciiCode){
       Serial.write(asciiCode);
       }
   }
+
