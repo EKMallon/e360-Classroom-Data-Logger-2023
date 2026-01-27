@@ -37,6 +37,6 @@ The data download function in setup retrieves those separate bytes and concatena
 
 ---
 
-NOTE: New configuration options were added to the start-up menu [ accessed via the IDEs Serial Monitor window ] 
+In 2026: New configuration options were added to the start-up menu [ accessed via the IDEs Serial Monitor window ] 
 ![image](https://github.com/EKMallon/e360-Classroom-Data-Logger-2023/blob/main/images/2026_StartMenuOptionScreen.jpg)
 
