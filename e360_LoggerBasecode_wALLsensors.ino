@@ -1,3 +1,4 @@
+
 // 2-module logger code by Edward Mallon - modified 2023 for the e360 course at Northwestern University
 // https://thecavepearlproject.org/2023/12/01/the-e360-a-classroom-data-logger-for-science/
 /*
@@ -79,11 +80,10 @@ Note: we still have upper 512 bytes of 328p 1k eeprom availible for OLED screen 
 
 //Infrared Motion sensor:                  // AM312 typically adds 10-15uA to sleep current
 //#define PIRcountPerInterval_2byte  // 2-bytes:  PIR is just another interrupt generating sensor, saves # of PIR HIGH events in a specified sample interval. Do not enable this with PIRtriggersReadings_4byte - choose one or the other
-//#define PIRtriggersReadings_4byte         // 4-bytes: Do not enable this with PIRcountPerInterval_2byte - choose one or the other
+//#define PIRtriggersReadings_4byte         // 4-bytes for full Unix Timestamp every pass: Do not enable this with PIRcountPerInterval_2byte - choose one or the other
 // DOES NOT use the regular RTC-alarm based sampling interval but instead records the seconds elapsed between EVERY PIR trigger event in a uint32_t long variable [uint16_t would overflow at ~18 hours]
-// Reconstructs time stamps in sendData2Serial function by incrementing starttime by d3_INT1_elapsedSeconds
 // PIRtriggersReadings_4byte usually enabled with four other bytes of sensor data [for a total of 8 bytes per record] OR with another 12 bytes of sensor data for a total of 16 bytes per record.
-// WARNING this can use alot of memory very quickly! - recommend use with larger eeprom memory attached
+// WARNING this can use alot of memory very quickly if PIR is triggered frequently!  - recommend use with larger eeprom memory attached
 
 //#define logCurrentBattery_2byte          // RARELY USED - not 1byte compressed like LowestBattery, primarily included as a powers-of-2 balancing option
 //#define logFreeVariableMemory_2byte      // RARELY USED - primarily included as a powers-of-2 rule balancing option that does not rely on any external sensors
@@ -195,19 +195,16 @@ uint8_t hiByte,loByte;                        // for splitting 16-byte integers 
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++   
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-#ifdef PIRcountPerInterval_2byte
-//--------------------------
+#if defined(PIRcountPerInterval_2byte) || defined(PIRtriggersReadings_4byte)
 uint16_t d3_INT1_eventCounter = 0;
 volatile boolean d3_INT1_Flag = false; 
 #endif
 
 #ifdef PIRtriggersReadings_4byte
 //--------------------------------
-uint32_t currentPIRtriggerTime;
-uint32_t previousPIRtriggerTime;
-uint32_t d3_INT1_elapsedSeconds = 0;
-uint16_t d3_INT1_eventCounter = 0;   //not used in this case but left in for compatiblity with PIRcountPerInterval_2byte
-volatile boolean d3_INT1_Flag = false; 
+uint32_t currentPIRtriggerTime;      // not saved, but calculated for specific lab activities
+uint32_t previousPIRtriggerTime;     // not saved, but calculated for specific lab activities
+uint32_t d3_INT1_elapsedSeconds = 0; // not saved, but calculated for specific lab activities
 #endif
 
 #ifdef readD7resistorwD8pullup_2byte 
@@ -1108,18 +1105,20 @@ turnOffAllindicatorLEDs();
 // So we must implement various 'traps' to prevent 3 successive 0xFF's from being saved in the data
 
 #ifdef PIRtriggersReadings_4byte  
-  //how to slice a 4-byte LONG uint32_t into individual bytes:  & 0b11111111   extracts only the lowest eight bits
-  loByte = d3_INT1_elapsedSeconds & 0b11111111; 
-    Wire.write(loByte);       // byte 1 (the lowest byte)
-  byteBuffer1 = (d3_INT1_elapsedSeconds >> 8) & 0b11111111;
-    Wire.write(byteBuffer1);  // byte 3
-  byteBuffer2 = (d3_INT1_elapsedSeconds >> 16) & 0b11111111;
-  if(byteBuffer2==255){byteBuffer2=254;}          
-  // Trapping 0xFF to preserve End of Data check in startMenu_sendOPDreadings2Serial
-  // NOTE: this trap will cause an error after 8,388,607 seconds = 97 days!
-    Wire.write(byteBuffer2);  // byte 2
-  hiByte = (d3_INT1_elapsedSeconds >> 24) & 0b11111111;
-    Wire.write(hiByte);       // byte 4 (the highest byte)
+  uint32_Buffer = RTC_DS3231_unixtime(); // must call this function AFTER calling RTC_DS3231_getTime to updates the global t_ variables
+  
+  // how to slice a 4-byte LONG uint32_t into individual bytes:  & 0b11111111 extracts only the lowest eight bits
+  loByte = uint32_Buffer & 0b11111111;  
+  uint32_Buffer = uint32_Buffer>>8; 
+  byteBuffer1 = uint32_Buffer & 0b11111111;
+  uint32_Buffer = uint32_Buffer>>8; 
+  byteBuffer2 = uint32_Buffer & 0b11111111;
+  uint32_Buffer = uint32_Buffer>>8;
+  hiByte = uint32_Buffer & 0b11111111;      
+    Wire.write(hiByte);       // the highest byte
+    Wire.write(byteBuffer2);  // next to highest byte
+    Wire.write(byteBuffer1);  // next to lowest byte
+    Wire.write(loByte);       // byte 1 (the lowest byte)      
 #endif
 
 #ifdef logLowestBattery_1byte                     // INDEX compression converts lowBattery reading to # less than 255 which can be stored in one byte eeprom memory location
@@ -2151,19 +2150,16 @@ if (!convertDataFlag){    // then output raw bytes exactly as read from eeprom [
         }      
 } else { // if convertDataFlag is true then raw eeprom bytes get re-constituted back to variables
 
-#ifdef PIRtriggersReadings_4byte   //4-byte reconstruction of d3_INT1_elapsedSeconds // saved from low byte first to high byte last
-      d3_INT1_elapsedSeconds = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer); //lo byte
-      EEmemPointer++;
-      uint32_Buffer = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer);
-      EEmemPointer++;
-      d3_INT1_elapsedSeconds = (uint32_Buffer << 8) | d3_INT1_elapsedSeconds;
-      uint32_Buffer = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer);
-      EEmemPointer++;
-      d3_INT1_elapsedSeconds = (uint32_Buffer << 16) | d3_INT1_elapsedSeconds;
-      uint32_Buffer = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer); //high byte
-      EEmemPointer++; 
-      d3_INT1_elapsedSeconds = (uint32_Buffer << 24) | d3_INT1_elapsedSeconds;    
-      unix_timeStamp += d3_INT1_elapsedSeconds;   // then PIR triggered readings have an irregular number seconds between intervals    
+#ifdef PIRtriggersReadings_4byte    
+//4-byte reconstruction of full unix timestamp which gets recorded EVERY PASS thru main loop
+//we saved the bytes extracted from unixtime into the eeprom with byte order: HIGHEST to LOWEST
+      unix_timeStamp = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer);  EEmemPointer++; // Highest byte
+      byteBuffer1 = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer);     EEmemPointer++;
+      unix_timeStamp = (unix_timeStamp << 8) | byteBuffer1;
+      byteBuffer1 = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer);     EEmemPointer++;
+      unix_timeStamp = (unix_timeStamp << 8) | byteBuffer1;
+      byteBuffer1 = i2c_eeprom_read_byte(EEpromI2Caddr,EEmemPointer);     EEmemPointer++; //lowest byte
+      unix_timeStamp = (unix_timeStamp << 8) | byteBuffer1; 
 #endif
 
   Serial.print(unix_timeStamp);Serial.print(",");
@@ -3190,4 +3186,3 @@ void sendMultiAscii2serial(uint8_t repeats,uint8_t asciiCode){
       Serial.write(asciiCode);
       }
   }
-
